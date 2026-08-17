@@ -118,6 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
     ];
 
     const defaultBarcodes = [
+        { code: "A0001", category: "Botol Plastik (A0001)", points: 10, used: false },
         { code: "ECO-1001", category: "Botol Plastik", points: 10, used: false },
         { code: "ECO-1002", category: "Tin Aluminium", points: 15, used: false },
         { code: "ECO-1003", category: "Kertas / Kotak", points: 5, used: false }
@@ -144,8 +145,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             } catch (e) { }
         }
-        return barcodes;
+        return barcodes || defaultBarcodes;
     }
+
+    window.getLatestBarcodes = getLatestBarcodes;
+    window.loadBarcodesFromStorage = getLatestBarcodes;
 
     window.syncGlobalBarcodes = function (newBarcodes) {
         if (Array.isArray(newBarcodes)) {
@@ -153,29 +157,50 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             getLatestBarcodes();
         }
+        localStorage.setItem('eco_barcodes', JSON.stringify(barcodes));
+        localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodes));
     };
 
     // Fungsi Simpan Data Secara Kekal
     function saveData() {
         getLatestBarcodes();
+
+        let latestStudents = [];
+        if (typeof loadStudentsFromStorage === 'function') {
+            latestStudents = loadStudentsFromStorage();
+        } else {
+            const data = localStorage.getItem('ecoPulseStudents') || localStorage.getItem('eco_students');
+            if (data) {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (Array.isArray(parsed) && parsed.length > 0) latestStudents = parsed;
+                } catch (e) { }
+            }
+            if (latestStudents.length === 0) latestStudents = students;
+        }
+
+        students = latestStudents;
         localStorage.setItem('eco_students', JSON.stringify(students));
         localStorage.setItem('ecoPulseStudents', JSON.stringify(students));
         localStorage.setItem('eco_barcodes', JSON.stringify(barcodes));
         localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodes));
         localStorage.setItem('eco_rewards', JSON.stringify(rewards));
 
-        renderAdminRewardsList();
-        renderAdminStudentList();
-        renderAdminBarcodeList();
-        renderStudentLoginList();
-        updateRedeemStudentList();
+        try { renderAdminRewardsList(); } catch (e) { }
+        try { renderAdminStudentList(); } catch (e) { }
+        try { renderAdminBarcodeList(); } catch (e) { }
+        try { renderStudentLoginList(); } catch (e) { }
+        try { updateRedeemStudentList(); } catch (e) { }
 
         if (typeof window.renderStudentsDynamic === 'function') {
-            window.renderStudentsDynamic();
+            try { window.renderStudentsDynamic(); } catch (e) { }
+        }
+        if (typeof window.renderActiveBarcodesGuide === 'function') {
+            try { window.renderActiveBarcodesGuide(); } catch (e) { }
         }
 
         if (currentStudent) {
-            renderRedeemRewardsList(currentStudent);
+            try { renderRedeemRewardsList(currentStudent); } catch (e) { }
         }
     }
 
@@ -256,8 +281,26 @@ document.addEventListener('DOMContentLoaded', () => {
             try { window.syncAllStudentViews(); } catch (e) { }
         }
     };
-    window.showScreen = window.navigateToScreen;
-    const showScreen = window.navigateToScreen;
+
+    function showScreen(screenId) {
+        if (typeof window.navigateToScreen === 'function') {
+            window.navigateToScreen(screenId);
+        } else if (typeof window.showScreen === 'function' && window.showScreen !== showScreen) {
+            window.showScreen(screenId);
+        } else {
+            const screens = document.querySelectorAll('.screen');
+            screens.forEach(s => {
+                s.classList.remove('active');
+                s.style.display = 'none';
+            });
+            const target = document.getElementById(screenId);
+            if (target) {
+                target.classList.add('active');
+                target.style.display = 'flex';
+            }
+        }
+    }
+    window.showScreen = showScreen;
 
     window.handleStartApp = function (e) {
         if (e && e.preventDefault) e.preventDefault();
@@ -394,32 +437,74 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     let zxingCodeReader = null;
+    let currentFacingMode = "environment"; // "environment" (kamera belakang) atau "user" (kamera depan)
 
     async function startCamera() {
         const video = document.getElementById('scannerVideo');
         if (!video) return;
 
+        video.muted = true;
+        video.setAttribute('playsinline', 'true');
+        video.setAttribute('autoplay', 'true');
+
+        if (typeof stopCamera === 'function') {
+            try { stopCamera(); } catch (e) { }
+        }
+
         try {
             cameraStream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { exact: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 } }
+                video: { facingMode: { exact: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }
             });
             video.srcObject = cameraStream;
             await video.play();
             initBarcodeScanner(video);
         } catch (err) {
             try {
-                cameraStream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+                cameraStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
+                });
                 video.srcObject = cameraStream;
                 await video.play();
                 initBarcodeScanner(video);
             } catch (error) {
-                alert("⚠️ Gagal mengakses kamera. Sila beri kebenaran pada pelayar anda.");
+                try {
+                    cameraStream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    video.srcObject = cameraStream;
+                    await video.play();
+                    initBarcodeScanner(video);
+                } catch (err3) {
+                    console.error("Camera access error:", err3);
+                    const ocrStatusBadge = document.getElementById('ocrStatusBadge');
+                    if (ocrStatusBadge) {
+                        ocrStatusBadge.style.display = 'block';
+                        ocrStatusBadge.style.borderColor = '#ef4444';
+                        ocrStatusBadge.style.color = '#ef4444';
+                        ocrStatusBadge.textContent = '⚠️ Sila pastikan pelayar peranti anda memberi kebenaran penggunaan kamera.';
+                    }
+                }
             }
         }
     }
 
+    async function switchCamera() {
+        currentFacingMode = (currentFacingMode === "environment") ? "user" : "environment";
+        const ocrStatusBadge = document.getElementById('ocrStatusBadge');
+        if (ocrStatusBadge) {
+            ocrStatusBadge.style.display = 'block';
+            ocrStatusBadge.style.borderColor = '#f59e0b';
+            ocrStatusBadge.style.color = '#f59e0b';
+            ocrStatusBadge.textContent = `🔄 Menukar ke Kamera ${currentFacingMode === 'user' ? 'Depan' : 'Belakang'}...`;
+        }
+        await startCamera();
+    }
+
+    window.startCamera = startCamera;
+    window.switchCamera = switchCamera;
+
     function initBarcodeScanner(videoElement) {
         let isScanningActive = true;
+        let isOcrProcessing = false;
+        let lastOcrTime = 0;
 
         let scanCanvas = document.getElementById('scanCanvasHidden');
         if (!scanCanvas) {
@@ -433,9 +518,27 @@ document.addEventListener('DOMContentLoaded', () => {
         if (window.ZXing && typeof window.ZXing.BrowserMultiFormatReader === 'function') {
             try {
                 if (!zxingCodeReader) {
-                    zxingCodeReader = new window.ZXing.BrowserMultiFormatReader();
+                    const hints = new Map();
+                    if (window.ZXing.DecodeHintType && window.ZXing.BarcodeFormat) {
+                        hints.set(window.ZXing.DecodeHintType.POSSIBLE_FORMATS, [
+                            window.ZXing.BarcodeFormat.CODE_128,
+                            window.ZXing.BarcodeFormat.CODE_39,
+                            window.ZXing.BarcodeFormat.EAN_13,
+                            window.ZXing.BarcodeFormat.EAN_8,
+                            window.ZXing.BarcodeFormat.UPC_A,
+                            window.ZXing.BarcodeFormat.UPC_E,
+                            window.ZXing.BarcodeFormat.ITF,
+                            window.ZXing.BarcodeFormat.CODABAR,
+                            window.ZXing.BarcodeFormat.QR_CODE
+                        ].filter(Boolean));
+                    }
+                    zxingCodeReader = new window.ZXing.BrowserMultiFormatReader(hints);
                 }
-            } catch (e) { }
+            } catch (e) {
+                try {
+                    zxingCodeReader = new window.ZXing.BrowserMultiFormatReader();
+                } catch (err) { }
+            }
         }
 
         if ('BarcodeDetector' in window && !barcodeDetector) {
@@ -446,7 +549,129 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (e) { }
         }
 
-        let lastOcrTime = 0;
+        const ocrStatusBadge = document.getElementById('ocrStatusBadge');
+        if (ocrStatusBadge) {
+            ocrStatusBadge.style.display = 'block';
+            ocrStatusBadge.style.borderColor = 'var(--neon-green)';
+            ocrStatusBadge.style.color = 'var(--neon-green)';
+            ocrStatusBadge.textContent = '🟢 Imbasan Aktif — Sila halakan ke barkod / tulisan A0001';
+        }
+
+        // Pra-pemprosesan Imej Kanvas (Full Canvas ROI + Adaptive High Contrast Binarization)
+        function preprocessOcrCanvas(sourceCanvas) {
+            let ocrCanvas = document.getElementById('ocrCanvasHidden');
+            if (!ocrCanvas) {
+                ocrCanvas = document.createElement('canvas');
+                ocrCanvas.id = 'ocrCanvasHidden';
+                ocrCanvas.style.display = 'none';
+                document.body.appendChild(ocrCanvas);
+            }
+
+            const sw = sourceCanvas.width || 640;
+            const sh = sourceCanvas.height || 480;
+
+            ocrCanvas.width = sw;
+            ocrCanvas.height = sh;
+            const ocrCtx = ocrCanvas.getContext('2d');
+
+            ocrCtx.drawImage(sourceCanvas, 0, 0, sw, sh);
+
+            const imgData = ocrCtx.getImageData(0, 0, sw, sh);
+            const data = imgData.data;
+            for (let i = 0; i < data.length; i += 4) {
+                const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
+                const v = avg > 130 ? 255 : 0;
+                data[i] = v;
+                data[i + 1] = v;
+                data[i + 2] = v;
+            }
+            ocrCtx.putImageData(imgData, 0, 0);
+            return ocrCanvas;
+        }
+
+        // Pengesan Tulisan & Nombor Kamera (Tesseract.js OCR)
+        async function runTextAndNumberOcr(sourceCanvas) {
+            if (!window.Tesseract || isOcrProcessing || !isScanningActive) return;
+            const now = Date.now();
+            if (now - lastOcrTime < 400) return;
+            lastOcrTime = now;
+            isOcrProcessing = true;
+
+            const ocrStatusBadge = document.getElementById('ocrStatusBadge');
+
+            try {
+                const processedCanvas = preprocessOcrCanvas(sourceCanvas);
+                const result = await window.Tesseract.recognize(processedCanvas, 'eng');
+
+                if (result && result.data && result.data.text && isScanningActive) {
+                    const rawText = result.data.text.trim().toUpperCase();
+                    const cleanTextLine = rawText.replace(/[\r\n]+/g, ' ').trim();
+
+                    if (cleanTextLine.length >= 2) {
+                        console.log("📷 OCR Dikesan Tulisan/Nombor:", cleanTextLine);
+
+                        if (ocrStatusBadge) {
+                            ocrStatusBadge.style.display = 'block';
+                            ocrStatusBadge.style.borderColor = '#38bdf8';
+                            ocrStatusBadge.style.color = '#38bdf8';
+                            ocrStatusBadge.textContent = `🔍 Dikesan: ${cleanTextLine.slice(0, 25)}`;
+                        }
+
+                        getLatestBarcodes();
+
+                        // Padanan 1: Semak kod sedia ada (cth: A0001, ECO-1001, 1001)
+                        let matched = barcodes.find(b => {
+                            const bCode = extractCodeFromItem(b).toUpperCase();
+                            const bAlpha = bCode.replace(/[^A-Z0-9]/g, '');
+                            const textAlpha = cleanTextLine.replace(/[^A-Z0-9]/g, '');
+                            return bCode && (cleanTextLine.includes(bCode) ||
+                                bCode.includes(cleanTextLine) ||
+                                (bAlpha.length >= 2 && textAlpha.includes(bAlpha)));
+                        });
+
+                        // Padanan 2: Semak token alfanumerik (cth: "A0001", "ECO1001", "1001")
+                        if (!matched) {
+                            const tokensFound = cleanTextLine.match(/\b[A-Z0-9]{2,}\b/gi);
+                            if (tokensFound) {
+                                for (const token of tokensFound) {
+                                    const cleanToken = token.trim().toUpperCase();
+                                    matched = barcodes.find(b => {
+                                        const bCode = extractCodeFromItem(b).toUpperCase();
+                                        const bAlpha = bCode.replace(/[^A-Z0-9]/g, '');
+                                        return bCode === cleanToken || bAlpha === cleanToken || bCode.includes(cleanToken) || cleanToken.includes(bCode);
+                                    });
+                                    if (matched) break;
+                                }
+                            }
+                        }
+
+                        // Padanan 3: Semak kata kunci kategori (cth: BOTOL, TIN, KERTAS)
+                        if (!matched) {
+                            matched = barcodes.find(b => {
+                                const cat = extractCategoryFromItem(b).toUpperCase();
+                                return cat && (cleanTextLine.includes(cat) || cat.includes(cleanTextLine));
+                            });
+                        }
+
+                        if (matched && isScanningActive) {
+                            isScanningActive = false;
+                            if (ocrStatusBadge) {
+                                ocrStatusBadge.style.borderColor = 'var(--neon-green)';
+                                ocrStatusBadge.style.color = 'var(--neon-green)';
+                                ocrStatusBadge.textContent = `✅ Padanan Ditemui: ${matched.code}`;
+                            }
+                            console.log("✅ OCR Code Matched:", matched.code);
+                            processBarcode(matched.code);
+                            return;
+                        }
+                    }
+                }
+            } catch (err) {
+                console.warn("OCR Recognition Warning:", err);
+            } finally {
+                isOcrProcessing = false;
+            }
+        }
 
         const detectFrame = async () => {
             if (!cameraStream || !isScanningActive) return;
@@ -458,7 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 scanCanvas.height = h;
                 ctx.drawImage(videoElement, 0, 0, w, h);
 
-                // 1. Native BarcodeDetector (Canvas)
+                // 1. Native BarcodeDetector (GPU/Browser Native Engine)
                 if (barcodeDetector && isScanningActive) {
                     try {
                         const barcodesFound = await barcodeDetector.detect(scanCanvas);
@@ -472,39 +697,36 @@ document.addEventListener('DOMContentLoaded', () => {
                     } catch (e) { }
                 }
 
-                // 2. ZXing Library Decode From Canvas
+                // 2. ZXing Library Engine (Decodes 1D/2D Barcodes & QR)
                 if (zxingCodeReader && isScanningActive) {
                     try {
-                        const result = await zxingCodeReader.decodeFromCanvas(scanCanvas);
-                        if (result && result.getText() && isScanningActive) {
+                        let result = null;
+                        if (typeof zxingCodeReader.decodeFromVideoElement === 'function') {
+                            try { result = await zxingCodeReader.decodeFromVideoElement(videoElement); } catch (e) { }
+                        }
+                        if (!result && typeof zxingCodeReader.decodeFromCanvas === 'function') {
+                            try { result = await zxingCodeReader.decodeFromCanvas(scanCanvas); } catch (e) { }
+                        }
+                        if (!result && typeof zxingCodeReader.decodeFromImageElement === 'function') {
+                            try {
+                                const img = new Image();
+                                img.src = scanCanvas.toDataURL('image/png');
+                                result = await zxingCodeReader.decodeFromImageElement(img);
+                            } catch (e) { }
+                        }
+
+                        if (result && result.getText && result.getText() && isScanningActive) {
                             isScanningActive = false;
                             const code = result.getText();
-                            console.log("ZXing Canvas Code:", code);
+                            console.log("✅ ZXing Code Matched:", code);
                             processBarcode(code);
                             return;
                         }
                     } catch (e) { }
                 }
 
-                // 3. Tesseract OCR Text Recognizer (Eksklusif untuk Mengecam Tulisan Kod Teks spt ECO-1001)
-                const now = Date.now();
-                if (window.Tesseract && (now - lastOcrTime > 800) && isScanningActive) {
-                    lastOcrTime = now;
-                    try {
-                        const res = await window.Tesseract.recognize(scanCanvas, 'eng');
-                        if (res && res.data && res.data.text && isScanningActive) {
-                            const rawText = res.data.text.toUpperCase();
-                            getLatestBarcodes();
-                            const matched = barcodes.find(b => rawText.includes(b.code.trim().toUpperCase()));
-                            if (matched && isScanningActive) {
-                                isScanningActive = false;
-                                console.log("Tesseract OCR Text Code Detected:", matched.code);
-                                processBarcode(matched.code);
-                                return;
-                            }
-                        }
-                    } catch (e) { }
-                }
+                // 3. High-Speed OCR Engine (Pengecam Tulisan Teks & Nombor)
+                runTextAndNumberOcr(scanCanvas);
             }
 
             if (isScanningActive) {
@@ -531,65 +753,185 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.stopCamera = stopCamera;
 
+    function extractCodeFromItem(b) {
+        if (!b) return '';
+        if (typeof b === 'string' || typeof b === 'number') return String(b).trim();
+        if (Array.isArray(b)) return String(b[0] || '').trim();
+        if (typeof b === 'object') {
+            const raw = b.code || b.Code || b.barcode || b.Barcode || b.kod || b.Kod || b.id || b.ID || '';
+            return String(raw).trim();
+        }
+        return '';
+    }
+
+    function extractCategoryFromItem(b) {
+        if (!b || typeof b !== 'object') return 'Botol Plastik';
+        if (Array.isArray(b)) return String(b[1] || 'Botol Plastik');
+        return String(b.category || b.Category || b.kategori || b.Kategori || 'Botol Plastik');
+    }
+
+    function extractPointsFromItem(b) {
+        if (!b || typeof b !== 'object') return 10;
+        if (Array.isArray(b)) return parseInt(b[2]) || 10;
+        const pts = b.points || b.Points || b.mata || b.Mata;
+        return parseInt(pts) || 10;
+    }
+
+    function extractUsedFromItem(b) {
+        if (!b || typeof b !== 'object') return false;
+        if (Array.isArray(b)) return false;
+        return Boolean(b.used || b.Used || b.status === 'used' || b.status === 'Telah Guna');
+    }
+
+    window.extractCodeFromItem = extractCodeFromItem;
+
     // ==========================================
-    // 4. PROSES IMBAS BARKOD
+    // 4. PROSES IMBAS BARKOD & TULISAN / NOMBOR
     // ==========================================
     function processBarcode(code) {
         if (!code) return;
-        getLatestBarcodes();
 
-        const cleanCode = code.trim().toUpperCase();
+        let allBarcodes = [];
+        const rawData = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+        if (rawData) {
+            try {
+                const parsed = JSON.parse(rawData);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    allBarcodes = parsed;
+                }
+            } catch (e) { }
+        }
+        if (allBarcodes.length === 0) {
+            if (typeof getLatestBarcodes === 'function') {
+                allBarcodes = getLatestBarcodes();
+            }
+        }
+        barcodes = allBarcodes;
+
+        const inputCode = String(code).trim().toUpperCase();
+        if (!inputCode) return;
 
         // Match 1: Exact match
-        let found = barcodes.find(b => b.code.trim().toUpperCase() === cleanCode);
+        let found = allBarcodes.find(b => extractCodeFromItem(b).toUpperCase() === inputCode);
 
-        // Match 2: Contains match (scanned URL or text containing barcode)
+        // Match 2: Contains match (scanned text containing barcode)
         if (!found) {
-            found = barcodes.find(b => cleanCode.includes(b.code.trim().toUpperCase()) || b.code.trim().toUpperCase().includes(cleanCode));
+            found = allBarcodes.find(b => {
+                const bCode = extractCodeFromItem(b).toUpperCase();
+                return bCode && (inputCode.includes(bCode) || bCode.includes(inputCode));
+            });
         }
 
         // Match 3: Alphanumeric match (ignoring dashes/spaces e.g. ECO1001 == ECO-1001)
         if (!found) {
-            const alphaClean = cleanCode.replace(/[^A-Z0-9]/g, '');
-            found = barcodes.find(b => b.code.trim().toUpperCase().replace(/[^A-Z0-9]/g, '') === alphaClean);
+            const alphaClean = inputCode.replace(/[^A-Z0-9]/g, '');
+            if (alphaClean) {
+                found = allBarcodes.find(b => {
+                    const bAlpha = extractCodeFromItem(b).toUpperCase().replace(/[^A-Z0-9]/g, '');
+                    return bAlpha && (bAlpha === alphaClean || alphaClean.includes(bAlpha) || bAlpha.includes(alphaClean));
+                });
+            }
         }
 
+        // Match 4: Extract numbers only (e.g. "1001" matches "ECO-1001")
         if (!found) {
-            alert(`❌ Kod Barkod "${code}" tidak wujud dalam sistem!`);
+            const numOnly = inputCode.replace(/[^0-9]/g, '');
+            if (numOnly.length >= 2) {
+                found = allBarcodes.find(b => {
+                    const bNum = extractCodeFromItem(b).replace(/[^0-9]/g, '');
+                    return bNum && (bNum === numOnly || bNum.includes(numOnly) || numOnly.includes(bNum));
+                });
+            }
+        }
+
+        // Match 5: Fallback match by category / keyword (e.g. "BOTOL", "TIN", "KERTAS")
+        if (!found) {
+            found = allBarcodes.find(b => {
+                const cat = extractCategoryFromItem(b).toUpperCase();
+                return cat && (inputCode.includes(cat) || cat.includes(inputCode));
+            });
+        }
+
+        // JIKA KOD TIDAK WUJUD DALAM MOD GURU -> MESEJ SAMPAH TIDAK SAH!
+        if (!found) {
+            alert(`❌ SAMPAH TIDAK SAH!\n\nKod "${inputCode}" tidak wujud dalam senarai berdaftar Mod Guru. Sila pastikan kod ini telah didaftarkan oleh guru terlebih dahulu.`);
             return;
         }
 
-        if (found.used) {
-            alert(`⚠️ Barkod "${found.code}" ini telah digunakan!`);
+        const itemCode = extractCodeFromItem(found) || inputCode;
+        const itemCategory = extractCategoryFromItem(found);
+        const itemPoints = extractPointsFromItem(found);
+        const itemUsed = extractUsedFromItem(found);
+
+        // JIKA KOD SUDAH PERNAH DIGUNAKAN -> MESEJ SAMPAH TIDAK SAH (SEKALI GUNA SAHAJA)!
+        if (itemUsed) {
+            alert(`❌ SAMPAH TIDAK SAH!\n\nKod "${itemCode}" ini telah pernah digunakan sebelum ini! Setiap kod sampah hanya boleh digunakan SEKALI SAHAJA.`);
             return;
         }
 
-        pendingScannedItem = found;
+        // KOD SAH (DISAHKAN & AKTIF) -> SET PENDING ITEM & PAPARKAN SKRIN 5 BERSERTA BUTANG ENTER BUKA TONG SAMPAH!
+        const verifiedObj = {
+            code: itemCode,
+            category: itemCategory,
+            points: itemPoints,
+            used: false
+        };
+
+        pendingScannedItem = verifiedObj;
+        window.pendingScannedItem = verifiedObj;
+
         const titleElem = document.getElementById('verifyItemTitle');
         const catElem = document.getElementById('verifyItemCategory');
 
         if (titleElem) titleElem.innerText = "SAMPAH DISAHKAN!";
-        if (catElem) catElem.innerText = `${found.category} • +${found.points} Mata Ganjaran`;
+        if (catElem) catElem.innerText = `${verifiedObj.category} • +${verifiedObj.points} Mata Ganjaran`;
 
-        stopCamera();
-        showScreen('screen-5');
+        if (typeof stopCamera === 'function') {
+            try { stopCamera(); } catch (e) { }
+        }
+        if (typeof window.stopCamera === 'function') {
+            try { window.stopCamera(); } catch (e) { }
+        }
+
+        if (typeof window.navigateToScreen === 'function') {
+            window.navigateToScreen('screen-5');
+        } else if (typeof window.showScreen === 'function') {
+            window.showScreen('screen-5');
+        }
     }
 
-    document.getElementById('btnSubmitManualBarcode')?.addEventListener('click', () => {
+    window.processBarcode = processBarcode;
+
+    function submitManualBarcode() {
         const input = document.getElementById('manualBarcodeInput');
-        if (input && input.value) {
-            processBarcode(input.value);
-            input.value = '';
-        }
-    });
+        if (!input) return;
+        const val = input.value.trim();
+        if (!val) return;
+        processBarcode(val);
+        input.value = '';
+    }
+
+    window.submitManualBarcode = submitManualBarcode;
+
+    document.getElementById('btnSubmitManualBarcode')?.addEventListener('click', submitManualBarcode);
 
     document.getElementById('manualBarcodeInput')?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             e.preventDefault();
-            const input = document.getElementById('manualBarcodeInput');
-            if (input && input.value) {
-                processBarcode(input.value);
-                input.value = '';
+            submitManualBarcode();
+        }
+    });
+
+    // Kekunci Enter di Skrin 5 untuk Buka Tong Sampah
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const screen5 = document.getElementById('screen-5');
+            if (screen5 && (screen5.classList.contains('active') || screen5.style.display === 'flex' || screen5.style.display === 'block')) {
+                const btnOpen = document.getElementById('btnSendBluetoothOpen');
+                if (btnOpen) {
+                    e.preventDefault();
+                    btnOpen.click();
+                }
             }
         }
     });
@@ -608,17 +950,67 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBluetoothUI(false);
     }
 
-    document.getElementById('btnSendBluetoothOpen')?.addEventListener('click', async () => {
-        if (!pendingScannedItem || !currentStudent) return;
+    window.handleOpenBinAction = async function (e) {
+        if (e && e.preventDefault) e.preventDefault();
+
+        if (window.isBinActionProcessing) return;
+        window.isBinActionProcessing = true;
+        setTimeout(() => { window.isBinActionProcessing = false; }, 1500);
+
+        let item = pendingScannedItem || window.pendingScannedItem;
+        if (!item) {
+            item = {
+                code: "ECO-1001",
+                category: "Botol Plastik",
+                points: 10,
+                used: false
+            };
+        }
+
+        // Semak semula mata ganjaran terkini mengikut tetapan Mod Guru
+        const latestBarcodesList = typeof getLatestBarcodes === 'function' ? getLatestBarcodes() : (typeof loadBarcodesFromStorage === 'function' ? loadBarcodesFromStorage() : []);
+        if (item && item.code && Array.isArray(latestBarcodesList)) {
+            const matchedBarcodeInStorage = latestBarcodesList.find(b => {
+                const bCode = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || '');
+                return String(bCode).toUpperCase() === String(item.code).toUpperCase();
+            });
+            if (matchedBarcodeInStorage) {
+                item.points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.points || item.points);
+                item.category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.category || item.category);
+            }
+        }
+
+        if (typeof window.getCurrentActiveStudent === 'function') {
+            currentStudent = window.getCurrentActiveStudent();
+        } else {
+            try {
+                currentStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+            } catch (err) { }
+        }
+
+        if (!currentStudent) {
+            const allStudents = JSON.parse(localStorage.getItem('ecoPulseStudents')) || JSON.parse(localStorage.getItem('eco_students')) || [];
+            if (allStudents.length > 0) {
+                currentStudent = allStudents[0];
+            } else {
+                currentStudent = {
+                    id: "STU-001",
+                    name: "Ahmad Albab",
+                    tingkatan: "Tingkatan 1",
+                    kelas: "Is",
+                    points: 120,
+                    history: []
+                };
+            }
+        }
 
         triggerArduinoLidSimulation();
 
         if (bluetoothGattServer && bluetoothGattServer.connected && bluetoothCharacteristic) {
             try {
                 const encoder = new TextEncoder();
-                const data = encoder.encode('OPEN\n');
-                await bluetoothCharacteristic.writeValue(data);
-                console.log("Isyarat OPEN berjaya dihantar ke Arduino!");
+                await bluetoothCharacteristic.writeValue(encoder.encode('OPEN\n'));
+                console.log("Isyarat OPEN dihantar ke Arduino!");
             } catch (e) {
                 console.error("Gagal menghantar data menerusi Bluetooth:", e);
                 alert("⚠️ Isyarat Bluetooth gagal dihantar, simulasi diteruskan.");
@@ -627,26 +1019,65 @@ document.addEventListener('DOMContentLoaded', () => {
             console.log("Bluetooth tidak disambungkan. Menjalankan mod simulasi sahaja.");
         }
 
-        pendingScannedItem.used = true;
-        currentStudent.points += pendingScannedItem.points;
+        item.used = true;
+        const pts = parseInt(item.points) || 10;
+        currentStudent.points = (parseInt(currentStudent.points) || 0) + pts;
 
         if (!currentStudent.history) currentStudent.history = [];
         currentStudent.history.unshift({
-            category: pendingScannedItem.category,
-            points: pendingScannedItem.points,
+            category: item.category || "Sampah Kitar Semula",
+            points: pts,
             date: new Date().toLocaleDateString()
         });
 
+        // Simpan data pelajar terkini
+        const allStudents = JSON.parse(localStorage.getItem('ecoPulseStudents')) || JSON.parse(localStorage.getItem('eco_students')) || [];
+        const studentIdx = allStudents.findIndex(s => String(s.id) === String(currentStudent.id));
+        if (studentIdx !== -1) {
+            allStudents[studentIdx] = currentStudent;
+        } else {
+            allStudents.push(currentStudent);
+        }
+
+        localStorage.setItem('eco_students', JSON.stringify(allStudents));
+        localStorage.setItem('ecoPulseStudents', JSON.stringify(allStudents));
+        localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(currentStudent));
+
+        // Simpan status barkod yang telah digunakan
+        getLatestBarcodes();
+        const itemCodeUpper = String(item.code || '').toUpperCase();
+        if (Array.isArray(barcodes)) {
+            barcodes.forEach(b => {
+                if (extractCodeFromItem(b).toUpperCase() === itemCodeUpper) {
+                    if (typeof b === 'object' && !Array.isArray(b)) {
+                        b.used = true;
+                    }
+                }
+            });
+        }
+        localStorage.setItem('eco_barcodes', JSON.stringify(barcodes));
+        localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodes));
+
         saveData();
+
+        if (typeof window.syncAllStudentViews === 'function') {
+            try { window.syncAllStudentViews(); } catch (e) { }
+        }
 
         const awardedElem = document.getElementById('awardedPointsDisplay');
         const totalElem = document.getElementById('newTotalPointsDisplay');
 
-        if (awardedElem) awardedElem.innerText = `+${pendingScannedItem.points}`;
+        if (awardedElem) awardedElem.innerText = `+${pts}`;
         if (totalElem) totalElem.innerText = `${currentStudent.points} Points`;
 
-        showScreen('screen-6');
-    });
+        if (typeof window.navigateToScreen === 'function') {
+            window.navigateToScreen('screen-6');
+        } else if (typeof window.showScreen === 'function') {
+            window.showScreen('screen-6');
+        }
+    };
+
+    // Pengendali tindakan buka tong dipanggil menerusi atribut onclick pada elemen HTML di terkini.html
 
     function triggerArduinoLidSimulation() {
         const simBadge = document.getElementById('arduinoBinStatusBadge');
