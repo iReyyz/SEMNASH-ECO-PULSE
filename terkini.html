@@ -324,6 +324,11 @@
                     </p>
 
                     <div class="camera-box" style="position: relative;">
+                        <button type="button" id="btnSwitchCamera"
+                            style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.65); color: var(--bright-cyan); border: 1px solid var(--bright-cyan); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; font-weight: bold; backdrop-filter: blur(4px); display: flex; align-items: center; gap: 6px;"
+                            onclick="if(typeof switchCamera === 'function') switchCamera();">
+                            🔄 Tukar Kamera
+                        </button>
                         <video id="scannerVideo" autoplay playsinline
                             style="width:100%; height:100%; object-fit:cover;"></video>
                         <canvas id="scannerCanvas" style="display: none;"></canvas>
@@ -346,16 +351,20 @@
                         </ul>
                     </div>
 
-                    <div class="manual-entry-box">
-                        <label style="font-weight: 700; font-size: 0.9rem; color: var(--neon-green);">Masukkan Kod
-                            Barkod Manual:</label>
+                    <form id="formManualBarcode"
+                        onsubmit="event.preventDefault(); window.submitManualBarcode(); return false;"
+                        class="manual-entry-box">
+                        <label for="manualBarcodeInput"
+                            style="font-weight: 700; font-size: 0.9rem; color: var(--neon-green);">Masukkan Kod
+                            Sampah / Barkod Manual:</label>
                         <div style="display: flex; gap: 8px; margin-top: 8px;">
                             <input type="text" id="manualBarcodeInput" class="input-custom"
-                                placeholder="Taip Kod Barkod Khas (cth: ECO-1001)">
-                            <button type="button" class="btn-secondary" id="btnSubmitManualBarcode"
-                                style="padding: 0 20px;">Hantar</button>
+                                placeholder="Taip Kod Sampah / Barkod (cth: ECO-1001 atau 1001)" autocomplete="off">
+                            <button type="submit" class="btn-primary-neon" id="btnSubmitManualBarcode"
+                                style="padding: 10px 24px; font-weight: bold; cursor: pointer; white-space: nowrap;"
+                                onclick="window.submitManualBarcode(); return false;">Hantar ➡️</button>
                         </div>
-                    </div>
+                    </form>
 
                     <button type="button" class="btn-secondary" id="btnBackToDashboard">
                         ⬅️ Kembali ke Dashboard
@@ -377,7 +386,8 @@
                     Tekan butang di bawah untuk menghantar isyarat Bluetooth ke Arduino dan membuka penutup tong sampah.
                 </p>
 
-                <button type="button" class="btn-open-bin" id="btnSendBluetoothOpen">
+                <button type="button" class="btn-open-bin" id="btnSendBluetoothOpen"
+                    onclick="window.handleOpenBinAction(); return false;">
                     🔓 ENTER & BUKA TONG SAMPAH
                 </button>
             </div>
@@ -918,8 +928,23 @@
                 target.style.display = 'flex';
             }
 
-            if (screenId !== 'screen-4' && typeof stopCamera === 'function') {
-                try { stopCamera(); } catch (e) { }
+            if (screenId !== 'screen-4') {
+                if (typeof stopCamera === 'function') {
+                    try { stopCamera(); } catch (e) { }
+                }
+                if (typeof window.stopCamera === 'function') {
+                    try { window.stopCamera(); } catch (e) { }
+                }
+            } else if (screenId === 'screen-4') {
+                if (typeof window.startCamera === 'function') {
+                    try { window.startCamera(); } catch (e) { }
+                } else if (typeof startCamera === 'function') {
+                    try { startCamera(); } catch (e) { }
+                }
+            }
+
+            if (screenId === 'screen-4' && typeof window.renderActiveBarcodesGuide === 'function') {
+                try { window.renderActiveBarcodesGuide(); } catch (e) { }
             }
 
             if (typeof window.syncAllStudentViews === 'function') {
@@ -928,6 +953,228 @@
         };
 
         window.showScreen = window.navigateToScreen;
+
+        window.renderActiveBarcodesGuide = function () {
+            const container = document.getElementById('activeBarcodesChips');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+
+            let barcodes = loadBarcodesFromStorage();
+            if (!barcodes || barcodes.length === 0) {
+                const rawData = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+                if (rawData) {
+                    try {
+                        const parsed = JSON.parse(rawData);
+                        if (Array.isArray(parsed)) barcodes = parsed;
+                    } catch (e) { }
+                }
+            }
+            if ((!barcodes || barcodes.length === 0) && typeof getLatestBarcodes === 'function') {
+                barcodes = getLatestBarcodes();
+            }
+
+            const activeList = (barcodes || []).filter(b => {
+                if (typeof extractUsedFromItem === 'function') return !extractUsedFromItem(b);
+                return !b.used;
+            });
+
+            if (dropdown) {
+                dropdown.innerHTML = '<option value="">-- Sila Pilih Kod Sampah Berdaftar --</option>' +
+                    activeList.map(b => {
+                        const code = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                        const category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                        const points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+                        return `<option value="${code}">🏷️ ${code} (${category} • +${points} Mata)</option>`;
+                    }).join('');
+            }
+
+            if (container) {
+                if (activeList.length === 0) {
+                    container.innerHTML = '<span style="font-size: 0.8rem; color: #aaa;">Tiada kod sampah aktif. Guru boleh menambah kod baharu dalam Mod Guru.</span>';
+                } else {
+                    container.innerHTML = activeList.map(b => {
+                        const code = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                        const category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                        const points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+
+                        return `<button type="button" class="badge-code-chip" onclick="window.selectActiveCodeChip('${code}')" style="background: rgba(16, 185, 129, 0.2); border: 1px solid var(--neon-green); color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s ease;">
+                            🏷️ <strong>${code}</strong> (${category} • +${points}m)
+                        </button>`;
+                    }).join('');
+                }
+            }
+        };
+
+        window.selectActiveCodeChip = function (code) {
+            const input = document.getElementById('manualBarcodeInput');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+            if (input) {
+                input.value = code;
+                input.focus();
+            }
+            if (dropdown) {
+                dropdown.value = code;
+            }
+        };
+
+        window.selectActiveBarcodeFromDropdown = function (code) {
+            if (!code) return;
+            const input = document.getElementById('manualBarcodeInput');
+            if (input) {
+                input.value = code;
+            }
+            window.submitManualBarcode();
+        };
+
+        window.submitManualBarcode = function () {
+            const input = document.getElementById('manualBarcodeInput');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+            const val = (input && input.value.trim()) ? input.value.trim() : (dropdown && dropdown.value.trim() ? dropdown.value.trim() : '');
+
+            if (!val) return;
+            if (typeof window.processBarcode === 'function') {
+                window.processBarcode(val);
+            } else if (typeof processBarcode === 'function') {
+                processBarcode(val);
+            }
+            if (input) input.value = '';
+            if (dropdown) dropdown.value = '';
+        };
+
+        window.handleOpenBinAction = async function (e) {
+            if (e && e.preventDefault) e.preventDefault();
+
+            if (window.isBinActionProcessing) return;
+            window.isBinActionProcessing = true;
+            setTimeout(() => { window.isBinActionProcessing = false; }, 1500);
+
+            let item = window.pendingScannedItem || (typeof pendingScannedItem !== 'undefined' ? pendingScannedItem : null);
+            if (!item) {
+                item = {
+                    code: "ECO-1001",
+                    category: "Botol Plastik",
+                    points: 10,
+                    used: false
+                };
+            }
+
+            // Semak semula mata ganjaran terkini mengikut tetapan Mod Guru
+            const latestBarcodesList = typeof loadBarcodesFromStorage === 'function' ? loadBarcodesFromStorage() : [];
+            if (item && item.code && Array.isArray(latestBarcodesList)) {
+                const matchedBarcodeInStorage = latestBarcodesList.find(b => {
+                    const bCode = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || '');
+                    return String(bCode).toUpperCase() === String(item.code).toUpperCase();
+                });
+                if (matchedBarcodeInStorage) {
+                    item.points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.points || item.points);
+                    item.category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.category || item.category);
+                }
+            }
+
+            let currentStudent = window.getCurrentActiveStudent ? window.getCurrentActiveStudent() : null;
+            if (!currentStudent) {
+                try {
+                    currentStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+                } catch (err) { }
+            }
+
+            let allStudents = loadStudentsFromStorage();
+            if (currentStudent) {
+                const latestInList = allStudents.find(s => String(s.id) === String(currentStudent.id));
+                if (latestInList) currentStudent = latestInList;
+            } else if (allStudents.length > 0) {
+                currentStudent = allStudents[0];
+            } else {
+                currentStudent = {
+                    id: "STU-001",
+                    name: "Ahmad Albab",
+                    tingkatan: "Tingkatan 1",
+                    kelas: "Is",
+                    points: 120,
+                    history: []
+                };
+            }
+
+            if (typeof triggerArduinoLidSimulation === 'function') {
+                try { triggerArduinoLidSimulation(); } catch (err) { }
+            }
+
+            if (typeof bluetoothGattServer !== 'undefined' && bluetoothGattServer && bluetoothGattServer.connected && bluetoothCharacteristic) {
+                try {
+                    const encoder = new TextEncoder();
+                    await bluetoothCharacteristic.writeValue(encoder.encode('OPEN\n'));
+                    console.log("Isyarat OPEN dihantar ke Arduino!");
+                } catch (btErr) {
+                    console.warn("Bluetooth send error:", btErr);
+                }
+            }
+
+            item.used = true;
+            const pts = parseInt(item.points) || 10;
+            currentStudent.points = (parseInt(currentStudent.points) || 0) + pts;
+
+            if (!currentStudent.history) currentStudent.history = [];
+            currentStudent.history.unshift({
+                category: item.category || "Sampah Kitar Semula",
+                points: pts,
+                date: new Date().toLocaleDateString('ms-MY')
+            });
+
+            // Simpan data pelajar terkini ke pangkalan data tempatan secara kekal
+            const studentIdx = allStudents.findIndex(s => String(s.id) === String(currentStudent.id));
+            if (studentIdx !== -1) {
+                allStudents[studentIdx] = currentStudent;
+            } else {
+                allStudents.push(currentStudent);
+            }
+
+            saveStudentsToStorage(allStudents);
+            localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(currentStudent));
+            window.currentStudent = currentStudent;
+
+            // Simpan status barkod yang telah digunakan
+            const rawBarcodes = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+            if (rawBarcodes) {
+                try {
+                    const barcodesList = JSON.parse(rawBarcodes);
+                    const itemCodeUpper = String(item.code || '').toUpperCase();
+                    if (Array.isArray(barcodesList)) {
+                        barcodesList.forEach(b => {
+                            const bCode = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                            if (String(bCode).toUpperCase() === itemCodeUpper) {
+                                if (typeof b === 'object' && !Array.isArray(b)) {
+                                    b.used = true;
+                                }
+                            }
+                        });
+                        localStorage.setItem('eco_barcodes', JSON.stringify(barcodesList));
+                        localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodesList));
+                    }
+                } catch (e) { }
+            }
+
+            if (typeof saveData === 'function') {
+                try { saveData(); } catch (e) { }
+            }
+
+            if (typeof window.syncAllStudentViews === 'function') {
+                try { window.syncAllStudentViews(); } catch (e) { }
+            }
+            if (typeof window.renderActiveBarcodesGuide === 'function') {
+                try { window.renderActiveBarcodesGuide(); } catch (e) { }
+            }
+
+            const awardedElem = document.getElementById('awardedPointsDisplay');
+            const totalElem = document.getElementById('newTotalPointsDisplay');
+
+            if (awardedElem) awardedElem.innerText = `+${pts}`;
+            if (totalElem) totalElem.innerText = `${currentStudent.points} Points`;
+
+            if (typeof window.navigateToScreen === 'function') {
+                window.navigateToScreen('screen-6');
+            } else if (typeof window.showScreen === 'function') {
+                window.showScreen('screen-6');
+            }
+        };
 
         // Module IndexedDB untuk Video
         const VideoDB = {
@@ -1009,6 +1256,36 @@
 
         let selectedStudentIdForLogin = null;
 
+        window.getCurrentActiveStudent = function () {
+            let student = null;
+            const rawCurrent = localStorage.getItem('ecoPulseCurrentStudent');
+            if (rawCurrent) {
+                try {
+                    student = JSON.parse(rawCurrent);
+                } catch (e) { }
+            }
+
+            if (!student) {
+                const allStudents = loadStudentsFromStorage();
+                if (allStudents.length > 0) {
+                    student = allStudents[0];
+                    localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+                }
+            }
+
+            if (student) {
+                const allStudents = loadStudentsFromStorage();
+                const latest = allStudents.find(s => String(s.id) === String(student.id));
+                if (latest) {
+                    student = latest;
+                    localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+                }
+            }
+
+            window.currentStudent = student;
+            return student;
+        };
+
         // Fungsi Utama Log Masuk Pelajar ke Dashboard (Screen 3)
         window.loginStudentAndEnterSystem = function (studentId) {
             const students = loadStudentsFromStorage();
@@ -1020,6 +1297,7 @@
 
             selectedStudentIdForLogin = student.id;
             localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+            window.currentStudent = student;
 
             // Kemaskini Paparan Profil Pelajar (Screen 3)
             const nameElem = document.getElementById('displayStudentName');
@@ -1380,12 +1658,17 @@
 
             function loadRewardsFromStorage() {
                 const data = localStorage.getItem('eco_rewards') || localStorage.getItem('ecoPulseRewards');
-                if (data) {
+                if (data !== null) {
                     try {
                         const parsed = JSON.parse(data);
-                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                        if (Array.isArray(parsed)) return parsed;
                     } catch (e) { }
                 }
+                const defaultRewardsList = [
+                    { id: "R-001", name: "Pensel Warna 12 Set", points: 50, stock: 10, image: "assets/reward-pencil.png" },
+                    { id: "R-002", name: "Buku Nota Eco-Friendly", points: 80, stock: 15, image: "assets/reward-notebook.png" },
+                    { id: "R-003", name: "Botol Air Kitar Semula", points: 150, stock: 5, image: "assets/reward-bottle.png" }
+                ];
                 localStorage.setItem('eco_rewards', JSON.stringify(defaultRewardsList));
                 localStorage.setItem('ecoPulseRewards', JSON.stringify(defaultRewardsList));
                 return defaultRewardsList;
@@ -1394,8 +1677,14 @@
             function saveRewardsToStorage(rewards) {
                 localStorage.setItem('eco_rewards', JSON.stringify(rewards));
                 localStorage.setItem('ecoPulseRewards', JSON.stringify(rewards));
+                if (typeof window.syncGlobalRewards === 'function') {
+                    window.syncGlobalRewards(rewards);
+                }
+                if (typeof window.renderAdminRewardsList === 'function') {
+                    try { window.renderAdminRewardsList(); } catch (e) { }
+                }
                 if (window.syncAllStudentViews) {
-                    window.syncAllStudentViews();
+                    try { window.syncAllStudentViews(); } catch (e) { }
                 }
             }
 
@@ -1498,6 +1787,39 @@
                 if (typeof updateRedeemStudentList === 'function') {
                     updateRedeemStudentList();
                 }
+
+                // Kemaskini Profil Pelajar Aktif (Screen 3)
+                let current = null;
+                if (typeof window.getCurrentActiveStudent === 'function') {
+                    current = window.getCurrentActiveStudent();
+                }
+                if (current) {
+                    const nameElem = document.getElementById('displayStudentName');
+                    const classElem = document.getElementById('displayStudentClass');
+                    const pointsElem = document.getElementById('displayStudentPoints');
+                    const historyList = document.getElementById('studentActivityList');
+
+                    if (nameElem) nameElem.textContent = current.name;
+                    if (classElem) classElem.textContent = `${current.tingkatan || ''} ${current.kelas || ''}`;
+                    if (pointsElem) pointsElem.textContent = current.points || 0;
+
+                    if (historyList) {
+                        historyList.innerHTML = '';
+                        if (!current.history || current.history.length === 0) {
+                            historyList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">Belum ada sejarah kitar semula.</p>';
+                        } else {
+                            current.history.forEach(item => {
+                                historyList.innerHTML += `
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                        <span>${item.category && item.category.includes('Tebus') ? '🎁' : '♻️'} ${item.category}</span>
+                                        <strong style="color: ${item.points < 0 ? '#ef4444' : 'var(--neon-green)'};">${item.points > 0 ? '+' : ''}${item.points} Mata</strong>
+                                    </div>
+                                `;
+                            });
+                        }
+                    }
+                }
+
                 const selectRedeemStudent = document.getElementById('selectRedeemStudent');
                 const studentId = selectRedeemStudent ? selectRedeemStudent.value : '';
                 const students = loadStudentsFromStorage();
@@ -1516,6 +1838,7 @@
                     const itemCard = e.target.closest('.reward-card-item');
                     const itemName = itemCard ? itemCard.querySelector('h4')?.textContent : 'Barangan Ganjaran';
                     const itemPoints = parseInt(e.target.getAttribute('data-points')) || 0;
+                    const rewardIndex = parseInt(e.target.getAttribute('data-index'));
 
                     const selectRedeemStudent = document.getElementById('selectRedeemStudent');
                     const studentId = selectRedeemStudent ? selectRedeemStudent.value : '';
@@ -1533,39 +1856,56 @@
                         return;
                     }
 
+                    let rewards = loadRewardsFromStorage();
+                    let targetRewardIndex = -1;
+                    if (!isNaN(rewardIndex) && rewards[rewardIndex]) {
+                        targetRewardIndex = rewardIndex;
+                    } else {
+                        targetRewardIndex = rewards.findIndex(r => r.name === itemName);
+                    }
+
+                    if (targetRewardIndex === -1 || !rewards[targetRewardIndex]) {
+                        alert('⚠️ Barangan ganjaran ini tidak dijumpai dalam pangkalan data!');
+                        return;
+                    }
+
+                    const targetReward = rewards[targetRewardIndex];
+                    const currentStock = targetReward.stock !== undefined ? targetReward.stock : 0;
+
+                    if (currentStock <= 0) {
+                        alert(`❌ STOK HABIS!\n\nBarangan "${targetReward.name}" telah kehabisan stok di Mod Guru.`);
+                        return;
+                    }
+
                     const student = students[studentIndex];
                     if (student.points < itemPoints) {
                         alert(`❌ Mata ganjaran tidak mencukupi!\nJumlah mata ${student.name}: ${student.points} PTS\nMata diperlukan: ${itemPoints} PTS`);
                         return;
                     }
 
-                    if (confirm(`Adakah anda pasti mahu menebus "${itemName}" untuk ${student.name} dengan ${itemPoints} mata?`)) {
+                    if (confirm(`Adakah anda pasti mahu menebus "${targetReward.name}" untuk ${student.name} dengan ${itemPoints} mata?\n(Stok semasa di Mod Guru: ${currentStock})`)) {
+                        // Ditolak Mata Pelajar
                         students[studentIndex].points -= itemPoints;
                         if (!students[studentIndex].history) students[studentIndex].history = [];
                         students[studentIndex].history.unshift({
-                            category: `Tebus: ${itemName}`,
+                            category: `Tebus: ${targetReward.name}`,
                             points: -itemPoints,
-                            date: new Date().toLocaleDateString()
+                            date: new Date().toLocaleDateString('ms-MY')
                         });
 
-                        const rewardIndex = parseInt(e.target.getAttribute('data-index'));
-                        let rewards = loadRewardsFromStorage();
-                        if (!isNaN(rewardIndex) && rewards[rewardIndex]) {
-                            if (rewards[rewardIndex].stock > 0) {
-                                rewards[rewardIndex].stock -= 1;
-                                saveRewardsToStorage(rewards);
-                            }
-                        }
+                        // Ditolak 1 Stok Ganjaran dalam Mod Guru & Simpan
+                        targetReward.stock = Math.max(0, currentStock - 1);
+                        rewards[targetRewardIndex] = targetReward;
 
+                        saveRewardsToStorage(rewards);
                         saveStudentsToStorage(students);
-                        alert(`🎉 Berjaya menebus "${itemName}"!\nBaki mata baharu bagi ${student.name} ialah ${students[studentIndex].points} PTS.`);
 
-                        // Kemaskini semula senarai & paparan
+                        alert(`🎉 Berjaya menebus "${targetReward.name}"!\nBaki stok di Mod Guru kini: ${targetReward.stock}\nBaki mata baharu bagi ${student.name} ialah ${students[studentIndex].points} PTS.`);
+
                         if (window.syncAllStudentViews) {
                             window.syncAllStudentViews();
                         }
 
-                        // Tetapkan semula pelajar yang dipilih & kemaskini paparan
                         selectRedeemStudent.value = studentId;
                         selectRedeemStudent.dispatchEvent(new Event('change'));
                     }
@@ -1583,6 +1923,11 @@
                         const selectedCard = document.querySelector('#studentListContainer .student-card.selected');
                         if (selectedCard) {
                             selectedStudentIdForLogin = selectedCard.getAttribute('data-id');
+                        } else {
+                            const firstCard = document.querySelector('#studentListContainer .student-card');
+                            if (firstCard) {
+                                selectedStudentIdForLogin = firstCard.getAttribute('data-id');
+                            }
                         }
                     }
 
@@ -1590,6 +1935,16 @@
                         window.loginStudentAndEnterSystem(selectedStudentIdForLogin);
                     } else {
                         alert('⚠️ Sila tekan / pilih nama pelajar terlebih dahulu daripada senarai!');
+                    }
+                });
+            }
+
+            const studentSearchInput = document.getElementById('studentSearchInput');
+            if (studentSearchInput) {
+                studentSearchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (btnLoginStudent) btnLoginStudent.click();
                     }
                 });
             }
@@ -1925,10 +2280,10 @@
             // ==========================================
             function loadBarcodesFromStorage() {
                 const data = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
-                if (data) {
+                if (data !== null) {
                     try {
                         const parsed = JSON.parse(data);
-                        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                        if (Array.isArray(parsed)) return parsed;
                     } catch (e) { }
                 }
                 const defaultBarcodes = [
@@ -1948,6 +2303,9 @@
                     window.syncGlobalBarcodes(barcodes);
                 }
                 window.renderAdminBarcodeList();
+                if (typeof window.renderActiveBarcodesGuide === 'function') {
+                    window.renderActiveBarcodesGuide();
+                }
             }
 
             window.renderAdminBarcodeList = function () {
@@ -1955,31 +2313,84 @@
                 if (!container) return;
                 const barcodes = loadBarcodesFromStorage();
 
-                if (barcodes.length === 0) {
-                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">Tiada bar kod mendaftar.</p>';
+                if (!barcodes || barcodes.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 10px;">Tiada bar kod mendaftar. Anda boleh menambah kod baharu di atas.</p>';
                     return;
                 }
 
-                container.innerHTML = barcodes.map((b, index) => `
-                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                container.innerHTML = barcodes.map((b, index) => {
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                    const catStr = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                    const ptsNum = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(b) : Boolean(b.used);
+
+                    return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 6px;">
                         <div>
-                            <strong style="color: var(--bright-cyan);">${b.code}</strong> (${b.category || 'Botol Plastik'})
-                            <br><small style="color: #aaa;">Mata: ${b.points || 10} | Status: <span style="color: ${b.used ? '#ef4444' : 'var(--neon-green)'}">${b.used ? 'Telah Guna' : 'Aktif'}</span></small>
+                            <strong style="color: var(--bright-cyan); font-size: 0.95rem;">${codeStr}</strong> (${catStr})
+                            <br><small style="color: #aaa;">Mata: ${ptsNum} | Status: <span style="color: ${isUsed ? '#ef4444' : 'var(--neon-green)'}; font-weight: bold;">${isUsed ? 'Telah Guna' : 'Aktif'}</span></small>
                         </div>
-                        <div style="display: flex; gap: 4px;">
-                            <button type="button" onclick="editBarcodeDynamic(${index})" style="background: #f59e0b; color: #fff; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer;">Edit Mata</button>
-                            <button type="button" onclick="deleteBarcodeDynamic(${index})" style="background: #ef4444; color: #fff; border: none; padding: 3px 8px; border-radius: 4px; cursor: pointer;">Padam</button>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <button type="button" onclick="window.toggleBarcodeStatusDynamic(${index})" style="background: ${isUsed ? '#10b981' : '#f59e0b'}; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                ${isUsed ? '🔄 Aktifkan' : '⚡ Guna'}
+                            </button>
+                            <button type="button" onclick="window.submitBarcodeFromAdminDynamic(${index})" style="background: #3b82f6; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                🚀 Hantar
+                            </button>
+                            <button type="button" onclick="window.editBarcodeDynamic(${index})" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Edit Mata</button>
+                            <button type="button" onclick="window.deleteBarcodeDynamic(${index})" style="background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Padam</button>
                         </div>
                     </div>
-                `).join('');
+                `;
+                }).join('');
+            };
+
+            window.toggleBarcodeStatusDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (barcodes[index]) {
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(barcodes[index]) : Boolean(barcodes[index].used);
+                    if (typeof barcodes[index] === 'object' && !Array.isArray(barcodes[index])) {
+                        barcodes[index].used = !isUsed;
+                    }
+                    saveBarcodesToStorage(barcodes);
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : barcodes[index].code;
+                    const newStatus = !isUsed ? 'Telah Guna' : 'Aktif (Boleh diimbas & tekan Hantar)';
+                    alert(`Status kod "${codeStr}" kini ditukar kepada: ${newStatus}`);
+                }
+            };
+
+            window.submitBarcodeFromAdminDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (barcodes[index]) {
+                    const item = barcodes[index];
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(item) : item.code;
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(item) : Boolean(item.used);
+                    if (isUsed) {
+                        if (confirm(`Kod "${codeStr}" telah digunakan. Adakah anda mahu mengaktifkannya semula dan hantar ke sistem?`)) {
+                            if (typeof item === 'object' && !Array.isArray(item)) item.used = false;
+                            saveBarcodesToStorage(barcodes);
+                        } else {
+                            return;
+                        }
+                    }
+                    if (typeof processBarcode === 'function') {
+                        processBarcode(codeStr);
+                    } else if (typeof window.processBarcode === 'function') {
+                        window.processBarcode(codeStr);
+                    }
+                }
             };
 
             window.editBarcodeDynamic = function (index) {
                 let barcodes = loadBarcodesFromStorage();
                 if (barcodes[index]) {
-                    const newPoints = prompt(`Masukkan mata ganjaran baharu bagi ${barcodes[index].code}:`, barcodes[index].points);
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : barcodes[index].code;
+                    const currentPts = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(barcodes[index]) : barcodes[index].points;
+                    const newPoints = prompt(`Masukkan mata ganjaran baharu bagi ${codeStr}:`, currentPts);
                     if (newPoints !== null && !isNaN(newPoints) && newPoints !== '') {
-                        barcodes[index].points = parseInt(newPoints);
+                        if (typeof barcodes[index] === 'object' && !Array.isArray(barcodes[index])) {
+                            barcodes[index].points = parseInt(newPoints);
+                        }
                         saveBarcodesToStorage(barcodes);
                     }
                 }
@@ -1987,11 +2398,16 @@
 
             window.deleteBarcodeDynamic = function (index) {
                 let barcodes = loadBarcodesFromStorage();
-                if (barcodes[index] && confirm(`Adakah anda pasti mahu memadam bar kod ${barcodes[index].code}?`)) {
-                    barcodes.splice(index, 1);
-                    saveBarcodesToStorage(barcodes);
+                if (index >= 0 && index < barcodes.length) {
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : (barcodes[index].code || barcodes[index]);
+                    if (confirm(`Adakah anda pasti mahu memadam bar kod "${codeStr}"?`)) {
+                        barcodes.splice(index, 1);
+                        saveBarcodesToStorage(barcodes);
+                        alert(`🗑️ Bar kod "${codeStr}" telah berjaya dipadam.`);
+                    }
                 }
             };
+            window.deleteBarcode = window.deleteBarcodeDynamic;
 
             function processBarcodeCSV(csvText) {
                 if (!csvText || !csvText.trim()) return 0;
@@ -2017,6 +2433,7 @@
                     if (existingIndex !== -1) {
                         barcodes[existingIndex].category = category;
                         barcodes[existingIndex].points = points;
+                        barcodes[existingIndex].used = false; // Reset ke Aktif
                     } else {
                         barcodes.push({
                             code: code,
@@ -2041,7 +2458,7 @@
                     try {
                         const content = await file.text();
                         const count = processBarcodeCSV(content);
-                        alert(`✅ Auto-Import Berjaya! ${count} rekod data bar kod telah didaftarkan ke senarai.`);
+                        alert(`✅ Auto-Import Berjaya! ${count} rekod data bar kod telah didaftarkan dan DIAKTIFKAN.`);
                     } catch (err) {
                         alert('❌ Gagal membaca fail CSV bar kod.');
                     }
@@ -2070,14 +2487,14 @@
                         }
 
                         const count = processBarcodeCSV(content);
-                        alert(`✅ Berjaya memproses & mendaftar ${count} data bar kod!`);
+                        alert(`✅ Berjaya memproses & mendaftar ${count} data bar kod! Status: Aktif.`);
                     } catch (err) {
                         alert('❌ Gagal mengimport data bar kod dari Google Sheet/CSV.');
                     }
                 });
             }
 
-            // Tambah Bar Kod Manual (Form Add Barcode)
+            // Tambah / Kemaskini Bar Kod Manual (Form Add Barcode)
             const formAddBarcode = document.getElementById('formAddBarcode');
             if (formAddBarcode) {
                 formAddBarcode.addEventListener('submit', (e) => {
@@ -2092,14 +2509,22 @@
                     }
 
                     let barcodes = loadBarcodesFromStorage();
-                    if (barcodes.some(b => b.code.toUpperCase() === code.toUpperCase())) {
-                        alert('⚠️ Kod Barkod ini sudah wujud!');
-                        return;
+                    const existingIndex = barcodes.findIndex(b => b.code.toUpperCase() === code.toUpperCase());
+
+                    if (existingIndex !== -1) {
+                        // Semasa kemaskini kod sedia ada, tukar statusnya kembali ke Aktif (used: false)
+                        barcodes[existingIndex].category = category;
+                        barcodes[existingIndex].points = points;
+                        barcodes[existingIndex].used = false; // Reset ke Aktif
+                        saveBarcodesToStorage(barcodes);
+                        alert(`✅ Kod Barkod "${code}" sedia ada telah dikemaskini dan DIAKTIFKAN SEMULA!\nStatus: Aktif (Boleh ditekan Hantar atau diimbas).`);
+                    } else {
+                        // Tambah Kod Baharu (Status: Aktif)
+                        barcodes.push({ code: code, category: category, points: points, used: false });
+                        saveBarcodesToStorage(barcodes);
+                        alert(`✅ Bar kod baharu "${code}" berjaya ditambah!\nStatus: Aktif (Boleh ditekan Hantar atau diimbas).`);
                     }
 
-                    barcodes.push({ code: code, category: category, points: points, used: false });
-                    saveBarcodesToStorage(barcodes);
-                    alert('✅ Bar kod berjaya ditambah!');
                     formAddBarcode.reset();
                 });
             }
