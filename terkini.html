@@ -1,0 +1,2624 @@
+<!DOCTYPE html>
+<html lang="ms">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>SEMNASH ECO-PULSE - Sistem Kitar Semula Pintar & Arduino Bluetooth</title>
+    <meta name="description"
+        content="Aplikasi Tong Sampah Pintar SEMNASH ECO-PULSE dengan integrasi Arduino Bluetooth, pengimbas barkod sekali guna, dan pengurusan mata ganjaran pelajar.">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://unpkg.com/@zxing/library@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/web-serial-polyfill@1.0.15/dist/serial.js"></script>
+    <style>
+        /* CSS Tambahan untuk Jam & Tarikh di atas Video */
+        .video-header-clock-card {
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(8px);
+            padding: 12px 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(16, 185, 129, 0.4);
+            margin-bottom: 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .video-header-clock-card .clock-title {
+            font-size: 0.85rem;
+            color: #94a3b8;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .video-header-clock-card .clock-time {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #10b981;
+            font-family: monospace;
+            letter-spacing: 1px;
+            line-height: 1;
+        }
+
+        .video-header-clock-card .clock-date {
+            font-size: 0.85rem;
+            color: #38bdf8;
+            font-weight: 700;
+        }
+
+        /* Styling untuk Pilihan Import Google Sheets */
+        .import-sheets-card {
+            background: rgba(16, 185, 129, 0.08);
+            border: 1px dashed var(--neon-green);
+            padding: 14px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+        }
+
+        /* Search input styling */
+        .search-box-container {
+            position: relative;
+            margin-bottom: 12px;
+        }
+
+        .search-box-container input {
+            padding-left: 36px;
+        }
+
+        .search-box-container .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 0.9rem;
+            color: var(--text-muted);
+        }
+
+        .student-card.selected {
+            border-color: var(--neon-green) !important;
+            background: rgba(16, 185, 129, 0.25) !important;
+        }
+
+        @media (max-width: 600px) {
+            .video-header-clock-card {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 6px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="app-container">
+        <!-- Header Bar -->
+        <header class="app-header">
+            <div class="brand-logo" id="brandLogoBtn" onclick="window.navigateToScreen('screen-1')"
+                style="cursor: pointer; display: flex; align-items: center; gap: 10px;">
+                <img src="assets/semnash_ecopulse_logo.png" alt="SEMNASH ECO-PULSE Logo" class="brand-logo-img"
+                    id="appHeaderLogoImg">
+                <span class="brand-title"
+                    style="font-size: 1.2rem; font-weight: 800; color: var(--neon-green); letter-spacing: 1px;">SEMNASH
+                    ECO-PULSE</span>
+            </div>
+
+            <div class="header-status-pills">
+                <div class="status-pill" id="usbStatusPill" title="Klik untuk sambung Kabel USB Serial (Arduino)"
+                    style="cursor: pointer; border: 1px solid rgba(56, 189, 248, 0.4); background: rgba(56, 189, 248, 0.12);"
+                    onclick="window.connectUSBDevice(event)">
+                    <span class="status-dot" id="usbStatusDot" style="background: #38bdf8;"></span>
+                    <span id="usbStatusText">🔌 USB Serial</span>
+                </div>
+
+                <div class="status-pill" id="bluetoothStatusPill" title="Klik untuk status Bluetooth"
+                    style="cursor: pointer;" onclick="window.connectBluetoothDevice(event)">
+                    <span class="status-dot" id="bluetoothStatusDot"></span>
+                    <span id="bluetoothStatusText">📡 Bluetooth</span>
+                </div>
+
+                <!-- Butang Admin -->
+                <button type="button" class="admin-btn" id="openAdminBtn">
+                    🔒 Mod Cikgu / Admin
+                </button>
+            </div>
+        </header>
+
+        <!-- PAPARAN 1: Video Promosi App & Overview Sistem -->
+        <main class="screen active" id="screen-1">
+            <div class="promo-hero-grid">
+
+                <div class="promo-video-container">
+                    <div class="video-header-clock-card">
+                        <div>
+                            <div class="clock-title">⏱️ WAKTU SEMASA DASHBOARD</div>
+                            <div id="heroDigitalDate" class="clock-date">Isnin, 1 Januari 2026</div>
+                        </div>
+                        <div id="heroDigitalClock" class="clock-time">00:00:00 AM</div>
+                    </div>
+
+                    <div class="promo-video-card">
+                        <div class="video-wrapper" id="videoContainer">
+                            <video id="mainPromoVideo" autoplay muted loop playsinline controls
+                                style="width: 100%; height: 100%; object-fit: cover; display: block;">
+                                <source src="assets/promo_video.mp4" type="video/mp4" id="mainPromoVideoSource">
+                                Pelayar anda tidak menyokong tag video ini.
+                            </video>
+                            <div class="video-fallback-canvas" id="mainVideoCanvasFallback" style="display: none;">
+                                <div class="animated-bin-icon">♻️</div>
+                                <h3 style="margin-top: 16px; color: var(--neon-green);">ECO-PULSE IN ACTION</h3>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 6px;">
+                                    Video Demonstrasi Sistem Tong Sampah Pintar Arduino
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="promo-content">
+                    <div class="eco-tag">✨ Inovasi Kitar Semula Sekolah</div>
+                    <h2 class="promo-title">
+                        Kitar Semula Lebih Mudah dengan <span class="highlight-text">ECO-PULSE</span>
+                    </h2>
+                    <p class="promo-desc">
+                        Sistem automatik berasaskan Arduino dan Bluetooth. Imbas barkod sampah khas untuk membuka
+                        penutup tong sampah pintar dan kumpul mata ganjaran terkumpul mengikut tingkatan & kelas anda!
+                    </p>
+
+                    <div class="feature-list">
+                        <div class="feature-item">
+                            <span>🏷️</span>
+                            <h4>Barkod 1-Time</h4>
+                            <p style="font-size: 0.75rem; color: var(--text-muted);">Imbasan sekali guna</p>
+                        </div>
+                        <div class="feature-item">
+                            <span>📡</span>
+                            <h4>Bluetooth Bin</h4>
+                            <p style="font-size: 0.75rem; color: var(--text-muted);">Penutup automatik</p>
+                        </div>
+                        <div class="feature-item">
+                            <span>🎁</span>
+                            <h4>Penebusan</h4>
+                            <p style="font-size: 0.75rem; color: var(--text-muted);">Tebus barang menarik</p>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 12px; margin-top: 20px;">
+                        <button type="button" class="btn-primary-neon" id="btnStartApp" style="flex: 1;"
+                            onclick="window.navigateToScreen('screen-2')">
+                            🚀 MULA RECYCLE SEKARANG
+                        </button>
+                        <button type="button" class="btn-secondary" id="btnGoToRedeemDirect" style="padding: 12px 20px;"
+                            onclick="window.navigateToScreen('screen-7')">
+                            🎁 TEBUS GANJARAN
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- PAPARAN 2: Login Pelajar -->
+        <main class="screen" id="screen-2">
+            <div class="login-section-card">
+                <div class="section-title-box">
+                    <h2>Pilih Profil Pelajar</h2>
+                    <p>Sila pilih Tingkatan, Kelas dan taip nama anda untuk carian automatik.</p>
+                </div>
+
+                <div class="selection-grid">
+                    <div class="form-group">
+                        <label for="selectTingkatan">🎓 Pilih Tingkatan:</label>
+                        <select id="selectTingkatan" class="select-custom">
+                            <option value="">-- Semua Tingkatan --</option>
+                            <option value="Tingkatan 1">Tingkatan 1</option>
+                            <option value="Tingkatan 2">Tingkatan 2</option>
+                            <option value="Tingkatan 3">Tingkatan 3</option>
+                            <option value="Tingkatan 4">Tingkatan 4</option>
+                            <option value="Tingkatan 5">Tingkatan 5</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="selectKelas">🏫 Pilih Kelas:</label>
+                        <select id="selectKelas" class="select-custom">
+                            <option value="">-- Semua Kelas --</option>
+                            <option value="Is">Is</option>
+                            <option value="Ik">Ik</option>
+                            <option value="Ir">Ir</option>
+                            <option value="Ia">Ia</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="studentSearchInput">🔍 Cari Nama Anda secara Pantas:</label>
+                    <div class="search-box-container">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="studentSearchInput" class="input-custom"
+                            placeholder="Taip nama pelajar untuk tapis automatik...">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>👤 Senarai Pelajar Berdaftar (Klik untuk pilih):</label>
+                    <div class="student-list-container" id="studentListContainer">
+                        <p style="color: var(--text-muted); text-align: center; width: 100%; padding: 20px;">Memuatkan
+                            senarai pelajar...</p>
+                    </div>
+                </div>
+
+                <div class="action-row">
+                    <button type="button" class="btn-secondary" id="btnBackToPromo">
+                        ⬅️ Kembali ke Utama
+                    </button>
+                    <button type="button" class="btn-primary-neon" id="btnLoginStudent"
+                        style="padding: 16px 36px; font-size: 1.1rem;">
+                        MASUK KE SISTEM ➡️
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- PAPARAN 3: Profil Pelajar -->
+        <main class="screen" id="screen-3">
+            <div class="profile-dashboard-grid">
+                <div class="profile-card">
+                    <div id="studentDashboardDate"
+                        style="font-size: 0.8rem; color: var(--bright-cyan); font-weight: 700; background: rgba(0,0,0,0.3); padding: 4px 12px; border-radius: 20px; display: inline-block; margin-bottom: 12px;">
+                        📅 Isnin, 1 Januari 2026
+                    </div>
+
+                    <div style="text-align: center; margin-bottom: 12px;">
+                        <div class="badge-pill" id="displayStudentBadge">Eco Warrior</div>
+                    </div>
+
+                    <h2 class="profile-name" id="displayStudentName" style="margin-top: 10px;">-</h2>
+                    <p class="profile-class" id="displayStudentClass">-</p>
+
+                    <div class="points-display-box" style="margin-top: 15px;">
+                        <div class="points-number" id="displayStudentPoints">0</div>
+                        <div class="points-label">JUMLAH MATA GANJARAN</div>
+                    </div>
+
+                    <button type="button" class="btn-secondary" id="btnGoToRedeemFromProfile"
+                        style="width: 100%; margin-top: 16px; background: rgba(245, 158, 11, 0.2); border-color: #f59e0b; color: #f59e0b;">
+                        🎁 TEBUS BARANG GANJARAN
+                    </button>
+                </div>
+
+                <div class="dashboard-action-area">
+                    <div class="dashboard-hero-banner" id="dashboardHeroBanner">
+                        <div class="scan-cta-text">
+                            <h3>Bersedia Buang Sampah?</h3>
+                            <p>Sediakan barkod sampah khas yang diberi oleh cikgu untuk disahkan.</p>
+                        </div>
+                        <button type="button" class="btn-primary-neon" id="btnGoToScan"
+                            style="font-size: 1.2rem; padding: 18px 32px;">
+                            📷 IMBAS BARKOD SAMPAH
+                        </button>
+                    </div>
+
+                    <div class="recent-activity-card">
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                            <h4 style="font-size: 1.1rem; color: var(--bright-cyan); margin: 0;">📜 Sejarah Aktiviti
+                                Kitar Semula Anda</h4>
+                            <button type="button" class="btn-secondary" id="btnRefreshActivity"
+                                style="padding: 4px 12px; font-size: 0.75rem;">🔄 Kemaskini</button>
+                        </div>
+                        <div class="activity-list" id="studentActivityList"></div>
+                    </div>
+
+                    <div style="display: flex; justify-content: flex-end;">
+                        <button type="button" class="btn-secondary" id="btnLogoutStudent">
+                            🚪 Tukar Pelajar / Logout
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- PAPARAN 4: Imbas Barkod Sampah -->
+        <main class="screen" id="screen-4">
+            <div class="barcode-scanner-grid">
+                <div class="scanner-viewfinder-card">
+                    <h3 style="font-size: 1.4rem; color: var(--neon-green); margin-bottom: 12px;">Imbas Barkod / Kod
+                        Tulisan pada Sampah</h3>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 16px;">
+                        Halakan kamera ke barkod atau tulisan kod khas. Kamera akan mengesan kod tulisan tersebut secara
+                        automatik.
+                    </p>
+
+                    <div class="camera-box" style="position: relative;">
+                        <button type="button" id="btnSwitchCamera"
+                            style="position: absolute; top: 10px; right: 10px; z-index: 10; background: rgba(0,0,0,0.65); color: var(--bright-cyan); border: 1px solid var(--bright-cyan); padding: 6px 14px; border-radius: 20px; font-size: 0.85rem; cursor: pointer; font-weight: bold; backdrop-filter: blur(4px); display: flex; align-items: center; gap: 6px;"
+                            onclick="if(typeof switchCamera === 'function') switchCamera();">
+                            🔄 Tukar Kamera
+                        </button>
+                        <video id="scannerVideo" autoplay playsinline
+                            style="width:100%; height:100%; object-fit:cover;"></video>
+                        <canvas id="scannerCanvas" style="display: none;"></canvas>
+                        <div class="scanner-overlay-line"></div>
+                        <div id="ocrStatusBadge"
+                            style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: var(--neon-green); padding: 4px 12px; border-radius: 12px; font-size: 0.8rem; border: 1px solid var(--neon-green);">
+                            📷 Pengesan Kamera OCR Aktif
+                        </div>
+                    </div>
+                </div>
+
+                <div class="scanner-instructions-side">
+                    <div>
+                        <h4 style="font-size: 1.1rem; color: var(--bright-cyan); margin-bottom: 10px;">💡 Panduan Barkod
+                            & Pengesan Tulisan</h4>
+                        <ul style="color: var(--text-muted); font-size: 0.9rem; padding-left: 20px; line-height: 1.6;">
+                            <li>Setiap sampah kitar semula mempunyai sticker barkod / kod tulisan khas.</li>
+                            <li>Kamera automatik mengecam tulisan kod pada permukaan item.</li>
+                            <li>Jika barkod sudah pernah diimbas, sistem akan menolak penyertaan.</li>
+                        </ul>
+                    </div>
+
+                    <form id="formManualBarcode"
+                        onsubmit="event.preventDefault(); window.submitManualBarcode(); return false;"
+                        class="manual-entry-box">
+                        <label for="manualBarcodeInput"
+                            style="font-weight: 700; font-size: 0.9rem; color: var(--neon-green);">Masukkan Kod
+                            Sampah / Barkod Manual:</label>
+                        <div style="display: flex; gap: 8px; margin-top: 8px;">
+                            <input type="text" id="manualBarcodeInput" class="input-custom"
+                                placeholder="Taip Kod Sampah / Barkod (cth: ECO-1001 atau 1001)" autocomplete="off">
+                            <button type="submit" class="btn-primary-neon" id="btnSubmitManualBarcode"
+                                style="padding: 10px 24px; font-weight: bold; cursor: pointer; white-space: nowrap;"
+                                onclick="window.submitManualBarcode(); return false;">Hantar ➡️</button>
+                        </div>
+                    </form>
+
+                    <button type="button" class="btn-secondary" id="btnBackToDashboard">
+                        ⬅️ Kembali ke Dashboard
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- PAPARAN 5: Pengesahan & Isyarat Bluetooth -->
+        <main class="screen" id="screen-5">
+            <div class="verification-card">
+                <div class="item-verified-icon">✅</div>
+                <h2 style="font-size: 2.2rem; color: var(--neon-green);" id="verifyItemTitle">SAMPAH DISAHKAN!</h2>
+                <p style="font-size: 1.2rem; color: var(--text-muted); margin-top: 6px;" id="verifyItemCategory">
+                    Botol Plastik • Mata Ganjaran Diperolehi
+                </p>
+
+                <p style="margin-top: 16px; font-size: 0.95rem; color: var(--bright-cyan);">
+                    Tekan butang di bawah untuk menghantar isyarat Bluetooth ke Arduino dan membuka penutup tong sampah.
+                </p>
+
+                <button type="button" class="btn-open-bin" id="btnSendBluetoothOpen"
+                    onclick="window.handleOpenBinAction(); return false;">
+                    🔓 ENTER & BUKA TONG SAMPAH
+                </button>
+            </div>
+        </main>
+
+        <!-- PAPARAN 6: Skrin Point Ganjaran -->
+        <main class="screen" id="screen-6">
+            <div class="reward-celebration-card">
+                <div class="data-saved-badge">
+                    💾 DATA REKOD BERJAYA DISIMPAN!
+                </div>
+
+                <h3 style="font-size: 1.8rem; color: var(--text-white);">TAHNIAH & TERIMA KASIH!</h3>
+                <p style="color: var(--text-muted); font-size: 1.1rem; margin-top: 6px;">
+                    Anda telah berjaya mengitar semula dan mendapat ganjaran mata:
+                </p>
+
+                <div class="points-earned-big" id="awardedPointsDisplay">+0</div>
+
+                <div
+                    style="background: rgba(15, 23, 42, 0.8); border: 1px solid var(--border-glass); padding: 16px 24px; border-radius: var(--radius-md); max-width: 450px; margin: 0 auto 24px auto;">
+                    <div style="display: flex; justify-content: space-between; font-size: 1.1rem;">
+                        <span style="color: var(--text-muted);">Jumlah Point Baru:</span>
+                        <strong style="color: var(--neon-green);" id="newTotalPointsDisplay">0 Points</strong>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 16px; justify-content: center;">
+                    <button type="button" class="btn-secondary" id="btnNextRecycle">
+                        🔄 Buang Sampah Lagi
+                    </button>
+                    <button type="button" class="btn-primary-neon" id="btnFinishSession"
+                        style="font-size: 1.1rem; padding: 14px 28px;">
+                        Selesai & Ke Utama 🏠
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <!-- PAPARAN 7: Pusat Penebusan Ganjaran Pelajar -->
+        <main class="screen" id="screen-7">
+            <div class="login-section-card" style="max-width: 950px;">
+                <div class="section-title-box">
+                    <h2>🎁 Pusat Penebusan Ganjaran</h2>
+                    <p>Semak baki mata anda dan lihat senarai barangan ganjaran yang boleh ditebus di bawah.</p>
+                </div>
+
+                <div class="selection-grid">
+                    <div class="form-group">
+                        <label for="selectRedeemTingkatan">🎓 Pilih Tingkatan:</label>
+                        <select id="selectRedeemTingkatan" class="select-custom">
+                            <option value="">-- Semua Tingkatan --</option>
+                            <option value="Tingkatan 1">Tingkatan 1</option>
+                            <option value="Tingkatan 2">Tingkatan 2</option>
+                            <option value="Tingkatan 3">Tingkatan 3</option>
+                            <option value="Tingkatan 4">Tingkatan 4</option>
+                            <option value="Tingkatan 5">Tingkatan 5</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="selectRedeemKelas">🏫 Pilih Kelas:</label>
+                        <select id="selectRedeemKelas" class="select-custom">
+                            <option value="">-- Semua Kelas --</option>
+                            <option value="Is">Is</option>
+                            <option value="Ik">Ik</option>
+                            <option value="Ir">Ir</option>
+                            <option value="Ia">Ia</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="redeemStudentSearchInput">🔍 Tapis Nama Pelajar:</label>
+                    <div class="search-box-container">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="redeemStudentSearchInput" class="input-custom"
+                            placeholder="Cari nama pelajar...">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="selectRedeemStudent">👤 Pilih Nama Pelajar:</label>
+                    <select id="selectRedeemStudent" class="select-custom">
+                        <option value="">-- Pilih Nama Pelajar Untuk Tebus --</option>
+                    </select>
+                </div>
+
+                <div id="redeemDashboardSection"
+                    style="margin-top: 20px; border-top: 1px solid var(--border-glass); padding-top: 20px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; background: rgba(15, 23, 42, 0.9); padding: 16px 20px; border-radius: 12px; margin-bottom: 24px; border: 1px solid var(--neon-green); flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <span
+                                style="font-size: 0.75rem; color: var(--bright-cyan); font-weight: 700; text-transform: uppercase;">PROFIL
+                                PELAJAR</span>
+                            <h3 id="redeemStudentName" style="color: #fff; margin: 4px 0 0 0; font-size: 1.3rem;">Sila
+                                Pilih Pelajar</h3>
+                            <p id="redeemStudentClass"
+                                style="color: var(--text-muted); font-size: 0.85rem; margin: 2px 0 0 0;">Tingkatan /
+                                Kelas</p>
+                        </div>
+                        <div style="text-align: right;">
+                            <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">BAKI MATA
+                                GANJARAN:</span>
+                            <div id="redeemStudentPoints"
+                                style="font-size: 2rem; font-weight: 800; color: var(--neon-green); line-height: 1;">0
+                                PTS</div>
+                        </div>
+                    </div>
+
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                        <h3 style="color: var(--bright-cyan); margin: 0; font-size: 1.2rem;">🛍️ Senarai Barangan Boleh
+                            Ditebus</h3>
+                        <span style="font-size: 0.8rem; color: var(--text-muted);">Pilih item mengikut mata terkumpul
+                            anda</span>
+                    </div>
+
+                    <div class="rewards-catalog-grid" id="rewardsCatalogContainer"
+                        style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 18px;">
+
+                        <div class="reward-card-item"
+                            style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; transition: transform 0.2s;">
+                            <div
+                                style="position: relative; width: 100%; height: 130px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 10px;">
+                                <img src="assets/item_notebook.png" alt="Buku Nota Eco"
+                                    onerror="this.src='assets/default-avatar.png';"
+                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                <span
+                                    style="position: absolute; top: 6px; right: 6px; background: rgba(16,185,129,0.9); color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Stok:
+                                    15</span>
+                            </div>
+                            <h4 style="color: #fff; font-size: 1rem; margin: 4px 0;">Buku Nota Eco</h4>
+                            <p style="color: var(--neon-green); font-weight: 800; font-size: 1.1rem; margin: 4px 0;">50
+                                Mata</p>
+                            <button type="button" class="btn-primary-neon btn-redeem-item" data-id="1" data-points="50"
+                                style="width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem;">
+                                🎁 TEBUS BARANG
+                            </button>
+                        </div>
+
+                        <div class="reward-card-item"
+                            style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; transition: transform 0.2s;">
+                            <div
+                                style="position: relative; width: 100%; height: 130px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 10px;">
+                                <img src="assets/item_pen.png" alt="Set Pen Gel Eco"
+                                    onerror="this.src='assets/default-avatar.png';"
+                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                <span
+                                    style="position: absolute; top: 6px; right: 6px; background: rgba(16,185,129,0.9); color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Stok:
+                                    20</span>
+                            </div>
+                            <h4 style="color: #fff; font-size: 1rem; margin: 4px 0;">Set Pen Gel Eco</h4>
+                            <p style="color: var(--neon-green); font-weight: 800; font-size: 1.1rem; margin: 4px 0;">30
+                                Mata</p>
+                            <button type="button" class="btn-primary-neon btn-redeem-item" data-id="2" data-points="30"
+                                style="width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem;">
+                                🎁 TEBUS BARANG
+                            </button>
+                        </div>
+
+                        <div class="reward-card-item"
+                            style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; transition: transform 0.2s;">
+                            <div
+                                style="position: relative; width: 100%; height: 130px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 10px;">
+                                <img src="assets/item_bottle.png" alt="Botol Minuman Eco"
+                                    onerror="this.src='assets/default-avatar.png';"
+                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                <span
+                                    style="position: absolute; top: 6px; right: 6px; background: rgba(239, 68, 68, 0.8); color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Stok:
+                                    5</span>
+                            </div>
+                            <h4 style="color: #fff; font-size: 1rem; margin: 4px 0;">Botol Minuman Eco</h4>
+                            <p style="color: var(--neon-green); font-weight: 800; font-size: 1.1rem; margin: 4px 0;">100
+                                Mata</p>
+                            <button type="button" class="btn-primary-neon btn-redeem-item" data-id="3" data-points="100"
+                                style="width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem;">
+                                🎁 TEBUS BARANG
+                            </button>
+                        </div>
+
+                        <div class="reward-card-item"
+                            style="background: rgba(15, 23, 42, 0.7); border: 1px solid var(--border-glass); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; transition: transform 0.2s;">
+                            <div
+                                style="position: relative; width: 100%; height: 130px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 10px;">
+                                <img src="assets/item_bag.png" alt="Beg Kitar Semula"
+                                    onerror="this.src='assets/default-avatar.png';"
+                                    style="width: 100%; height: 100%; object-fit: cover;">
+                                <span
+                                    style="position: absolute; top: 6px; right: 6px; background: rgba(16,185,129,0.9); color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">Stok:
+                                    12</span>
+                            </div>
+                            <h4 style="color: #fff; font-size: 1rem; margin: 4px 0;">Beg Kitar Semula (Tote)</h4>
+                            <p style="color: var(--neon-green); font-weight: 800; font-size: 1.1rem; margin: 4px 0;">80
+                                Mata</p>
+                            <button type="button" class="btn-primary-neon btn-redeem-item" data-id="4" data-points="80"
+                                style="width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem;">
+                                🎁 TEBUS BARANG
+                            </button>
+                        </div>
+
+                    </div>
+                </div>
+
+                <div class="action-row" style="margin-top: 24px;">
+                    <button type="button" class="btn-secondary" id="btnBackFromRedeem"
+                        onclick="window.handleBackFromRedeem(event)">
+                        ⬅️ Kembali ke Utama
+                    </button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- MODAL KATA LALUAN ADMIN -->
+    <div class="modal-overlay" id="adminPasswordModal" style="display: none;">
+        <div class="password-dialog-card">
+            <div style="font-size: 48px; margin-bottom: 12px;">🔒</div>
+            <h3 style="color: var(--neon-green); font-size: 1.5rem; margin-bottom: 8px;">Akses Mod Admin / Cikgu</h3>
+            <p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px;">
+                Sila masukkan kata laluan untuk mengakses pengurusan sistem (Default: cikgu).
+            </p>
+
+            <form id="adminPasswordForm" style="display: flex; flex-direction: column; gap: 16px;">
+                <input type="password" id="adminPasswordInput" class="input-custom" placeholder="Kata Laluan Admin"
+                    required style="text-align: center; letter-spacing: 2px;" autocomplete="current-password">
+                <div style="display: flex; gap: 10px;">
+                    <button type="button" class="btn-secondary" id="btnCancelAdminPassword"
+                        style="flex: 1;">Batal</button>
+                    <button type="submit" class="btn-primary-neon" id="btnSubmitAdminPassword"
+                        style="font-size: 1rem; padding: 12px; flex: 1;">Masuk ➡️</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL PENTADBIR / CIKGU (Admin Panel) -->
+    <div class="modal-overlay" id="adminModal" style="display: none;">
+        <div class="modal-content-card">
+            <div class="modal-header">
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <h3>⚙️ Panel Pentadbir / Cikgu</h3>
+                    <span
+                        style="background: rgba(16,185,129,0.2); color: var(--neon-green); padding: 2px 10px; border-radius: 12px; font-size: 0.75rem; font-weight: 700;">AUTHENTICATED</span>
+                </div>
+                <button type="button" class="close-btn" id="closeAdminBtn" aria-label="Tutup">&times;</button>
+            </div>
+
+            <div class="tab-nav" id="adminTabNav">
+                <button type="button" class="tab-btn active" data-tab="tab-add-student">Pengurusan Pelajar</button>
+                <button type="button" class="tab-btn" data-tab="tab-barcodes">Urus Barkod (1-Time Use)</button>
+                <button type="button" class="tab-btn" data-tab="tab-manage-rewards">🎁 Urus Barangan Ganjaran</button>
+                <button type="button" class="tab-btn" data-tab="tab-video">🎥 Video & Banner</button>
+                <button type="button" class="tab-btn" data-tab="tab-bluetooth">🔌 Hardware & USB Diagnostic</button>
+            </div>
+
+            <!-- Tab 1: Pengurusan Pelajar -->
+            <div class="tab-content active" id="tab-add-student">
+                <div class="import-sheets-card">
+                    <h4 style="color: var(--neon-green); margin-bottom: 6px; font-size: 1rem;">
+                        📊 Import Pukal Senarai Pelajar via Google Sheets / Fail CSV
+                    </h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+                        Muat naik fail CSV atau tampal URL CSV Awam dari Google Sheets (Format: Nama, Tingkatan, Kelas,
+                        Mata).
+                    </p>
+
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="url" id="googleSheetUrlInput" class="input-custom"
+                            placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv">
+
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Atau Muat Naik Fail CSV:</label>
+                            <input type="file" id="csvFileInput" accept=".csv" class="input-custom"
+                                style="flex: 1; padding: 6px;">
+                            <button type="button" class="btn-primary-neon" id="btnImportGoogleSheet"
+                                style="padding: 10px 20px; font-weight: bold; font-size: 0.85rem; white-space: nowrap;">
+                                📥 IMPORT SENARAI PELAJAR
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="formAddStudent" style="display: flex; flex-direction: column; gap: 14px;">
+                    <h4 style="color: var(--bright-cyan); font-size: 1rem; margin: 0;" id="formAddStudentTitle">➕ Tambah
+                        Seorang Pelajar (Manual)
+                    </h4>
+                    <input type="hidden" id="editingStudentId" value="">
+
+                    <div class="form-group">
+                        <label for="adminNewStudentName">Nama Pelajar:</label>
+                        <input type="text" id="adminNewStudentName" class="input-custom"
+                            placeholder="Nama Penuh Pelajar" required>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+                        <div class="form-group">
+                            <label for="adminNewStudentTingkatan">Tingkatan:</label>
+                            <select id="adminNewStudentTingkatan" class="select-custom" required>
+                                <option value="Tingkatan 1">Tingkatan 1</option>
+                                <option value="Tingkatan 2">Tingkatan 2</option>
+                                <option value="Tingkatan 3">Tingkatan 3</option>
+                                <option value="Tingkatan 4">Tingkatan 4</option>
+                                <option value="Tingkatan 5">Tingkatan 5</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="adminNewStudentKelas">Kelas:</label>
+                            <select id="adminNewStudentKelas" class="select-custom" required>
+                                <option value="Is">Is</option>
+                                <option value="Ik">Ik</option>
+                                <option value="Ir">Ir</option>
+                                <option value="Ia">Ia</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adminNewStudentPoints">Points Permulaan:</label>
+                        <input type="number" id="adminNewStudentPoints" class="input-custom" value="0" min="0">
+                    </div>
+
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button type="submit" class="btn-primary-neon" id="btnSubmitStudentForm"
+                            style="font-size: 1rem; padding: 12px; flex: 1;">
+                            ➕ Daftarkan Pelajar Baharu
+                        </button>
+                        <button type="button" class="btn-secondary" id="btnCancelEditStudent"
+                            style="display:none; font-size: 1rem; padding: 12px;">
+                            ✖️ Batal Edit
+                        </button>
+                        <button type="button" class="btn-primary-neon" id="btnSaveStudentsData"
+                            style="font-size: 1rem; padding: 12px; flex: 1; background: #38bdf8; color: #000;">
+                            💾 Simpan Data Pelajar
+                        </button>
+                        <button type="button" class="btn-secondary" id="btnResetDatabase"
+                            style="background: rgba(239, 68, 68, 0.2); border-color: #ef4444; color: #ef4444;">
+                            ⚠️ Reset Semua Data
+                        </button>
+                    </div>
+                </form>
+
+                <h4 style="color: var(--bright-cyan); margin-top: 20px; margin-bottom: 10px;">
+                    Senarai Pelajar Berdaftar (Dikemaskini):
+                </h4>
+                <div style="max-height: 200px; overflow-y: auto; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 10px;"
+                    id="adminStudentManageList">
+                </div>
+            </div>
+
+            <!-- Tab 2: Urus Barkod -->
+            <div class="tab-content" id="tab-barcodes" style="display: none;">
+                <div class="import-sheets-card">
+                    <h4 style="color: var(--neon-green); margin-bottom: 6px; font-size: 1rem;">
+                        📊 Import / Masukkan Data Bar Kod dari Google Sheet Automatik
+                    </h4>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 10px;">
+                        Masukkan URL Google Sheet CSV Awam atau fail CSV bar kod (Format: Kod, Kategori, Mata).
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="url" id="googleSheetBarcodeUrlInput" class="input-custom"
+                            placeholder="https://docs.google.com/spreadsheets/d/e/.../pub?output=csv">
+                        <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                            <input type="file" id="csvBarcodeFileInput" accept=".csv" class="input-custom"
+                                style="flex: 1; padding: 6px;">
+                            <button type="button" class="btn-primary-neon" id="btnImportBarcodeSheet"
+                                style="padding: 10px 20px; font-weight: bold; font-size: 0.85rem; white-space: nowrap;">
+                                📥 IMPORT DATA BAR KOD
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="formAddBarcode" style="display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap;">
+                    <input type="text" id="adminNewBarcodeCode" class="input-custom"
+                        placeholder="Kod Barkod (cth: ECO-9988)" required style="flex: 1;">
+                    <select id="adminNewBarcodeCategory" class="select-custom" style="width: 180px;">
+                        <option value="Botol Plastik">Botol Plastik</option>
+                        <option value="Tin Aluminium">Tin Aluminium</option>
+                        <option value="Kertas / Kotak">Kertas / Kotak</option>
+                        <option value="Botol Kaca">Botol Kaca</option>
+                    </select>
+                    <input type="number" id="adminNewBarcodePoints" class="input-custom" placeholder="Point" value="10"
+                        style="width: 90px;">
+                    <button type="submit" class="btn-secondary" style="white-space: nowrap;">Tambah</button>
+                </form>
+
+                <div style="display: flex; gap: 10px; margin-bottom: 14px;">
+                    <button type="button" class="btn-primary-neon" id="btnSaveBarcodesData"
+                        style="flex: 1; padding: 12px; font-weight: bold; background: #38bdf8; color: #000;">
+                        💾 Simpan Senarai Bar Kod
+                    </button>
+                    <button type="button" class="btn-secondary" id="btnResetBarcodesData"
+                        style="padding: 12px 18px; font-weight: bold; background: #ef4444; color: #fff; border: none; cursor: pointer;">
+                        🔄 Reset Data Barkod
+                    </button>
+                </div>
+
+                <h4 style="color: var(--bright-cyan); margin-bottom: 10px;">Senarai Barkod Mendaftar:</h4>
+                <div style="max-height: 230px; overflow-y: auto; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 10px;"
+                    id="adminBarcodeList">
+                </div>
+            </div>
+
+            <!-- Tab 3: Pengurusan Item Ganjaran & Stok -->
+            <div class="tab-content" id="tab-manage-rewards" style="display: none;">
+                <h4 style="color: var(--bright-cyan); margin-bottom: 12px;">🎁 Tambah / Urus Barangan Ganjaran & Stok
+                </h4>
+                <form id="formAddRewardItem"
+                    style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px;">
+
+                    <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px;">
+                        <div>
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Nama Item:</label>
+                            <input type="text" id="adminRewardName" class="input-custom"
+                                placeholder="cth: Buku Nota Eco" required>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Mata Diperlukan:</label>
+                            <input type="number" id="adminRewardPoints" class="input-custom" placeholder="Mata" min="1"
+                                required>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.8rem; color: var(--text-muted);">Jumlah Stok:</label>
+                            <input type="number" id="adminRewardStock" class="input-custom" placeholder="Stok" min="0"
+                                value="10" required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="adminRewardImageFile">🖼️ Muat Naik Gambar Barangan Ganjaran:</label>
+                        <input type="file" id="adminRewardImageFile" class="input-custom" accept="image/*">
+                    </div>
+
+                    <button type="submit" class="btn-primary-neon" style="font-size: 0.95rem; padding: 10px;">
+                        ➕ Tambah Item Ganjaran Baharu
+                    </button>
+                </form>
+
+                <h4 style="color: var(--bright-cyan); margin-bottom: 10px;">Senarai Item Ganjaran & Stok Semasa:</h4>
+                <div style="max-height: 250px; overflow-y: auto; background: rgba(0,0,0,0.4); border-radius: 8px; padding: 10px;"
+                    id="adminRewardsList">
+                </div>
+
+                <button type="button" class="btn-primary-neon" id="btnSaveRewardStockChanges"
+                    style="width: 100%; margin-top: 14px; padding: 12px; font-weight: bold; background: var(--neon-green); color: #000;">
+                    💾 SIMPAN / KEMASKINI GANJARAN
+                </button>
+            </div>
+
+            <!-- Tab 4: Video & Banner -->
+            <div class="tab-content" id="tab-video" style="display: none;">
+                <h4 style="color: var(--bright-cyan); margin-bottom: 12px;">🎥 & 🖼️ Tetapan Video & Banner Dashboard
+                </h4>
+
+                <form id="formAdminVisualSettings" style="display: flex; flex-direction: column; gap: 18px;">
+                    <div class="form-group"
+                        style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                        <label for="adminVideoFileInput" style="font-weight: 700; color: var(--neon-green);">🎥 Pilih
+                            Fail Video Promosi Dashboard (Menyokong Saiz Besar):</label>
+                        <input type="file" id="adminVideoFileInput" accept="video/*" class="input-custom"
+                            style="margin-top: 8px;">
+                        <p style="font-size: 0.75rem; color: var(--text-muted); margin-top: 6px;">
+                            Pilih mana-mana fail video (MP4, WebM, MOV) tanpa had saiz kecil. Data disimpan terus dalam
+                            pelayar melalui IndexedDB.
+                        </p>
+
+                        <div id="videoPreviewContainer" style="margin-top: 12px; display: none;">
+                            <p style="font-size: 0.8rem; color: var(--bright-cyan); margin-bottom: 6px;">Pratonton Video
+                                (Preview):</p>
+                            <video id="adminVideoPreview" controls
+                                style="max-width: 100%; max-height: 180px; border-radius: 8px; border: 1px solid var(--neon-green);"></video>
+                        </div>
+
+                        <div id="videoUploadStatus"
+                            style="font-size: 0.85rem; color: #10b981; font-weight: bold; margin-top: 8px; display: none;">
+                        </div>
+
+                        <button type="button" class="btn-primary-neon" id="btnSaveVideo"
+                            style="margin-top: 14px; width: 100%; padding: 12px; font-weight: bold;">
+                            💾 SIMPAN VIDEO DASHBOARD
+                        </button>
+                    </div>
+
+                    <div class="form-group"
+                        style="background: rgba(0,0,0,0.2); padding: 14px; border-radius: 8px; border: 1px solid var(--border-glass);">
+                        <label for="adminDashboardBgInput" style="font-weight: 700; color: var(--neon-green);">🖼️ Muat
+                            Naik Gambar Banner Dashboard Pelajar:</label>
+                        <input type="file" id="adminDashboardBgInput" accept="image/*" class="input-custom"
+                            style="margin-top: 8px;">
+
+                        <div id="bannerPreviewContainer" style="margin-top: 12px; display: none;">
+                            <p style="font-size: 0.8rem; color: var(--bright-cyan); margin-bottom: 6px;">Pratonton
+                                Banner (Preview):</p>
+                            <img id="adminBannerPreview" src="" alt="Banner Preview"
+                                style="width: 100%; max-height: 120px; object-fit: cover; border-radius: 8px; border: 1px solid var(--neon-green);">
+                        </div>
+
+                        <button type="button" class="btn-primary-neon" id="btnSaveBanner"
+                            style="margin-top: 14px; width: 100%; padding: 12px; font-weight: bold;">
+                            💾 SIMPAN BANNER DASHBOARD
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Tab 5: USB Diagnostic & Hardware (Mod Guru) -->
+            <div class="tab-content" id="tab-bluetooth" style="display: none;">
+                <h4 style="color: var(--bright-cyan); margin-bottom: 8px;">🔌 Sambungan Kabel USB Serial & Diagnostik
+                    Hardware</h4>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 14px;">
+                    Ruang khas Mod Guru untuk menguji sambungan kabel USB Serial (Arduino UNO / ESP32) dan menguji
+                    pergerakan servo motor tong sampah secara real-time.
+                </p>
+
+                <!-- BUTANG SAMBUNG -->
+                <div style="display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap;">
+                    <button type="button" class="btn-primary-neon"
+                        style="padding: 10px 18px; font-weight: bold; background: #38bdf8; color: #0f172a; border: none; border-radius: 8px; cursor: pointer;"
+                        onclick="window.connectUSBDevice(event)">
+                        🔌 Sambung Kabel USB Serial
+                    </button>
+                    <button type="button" class="btn-secondary" style="padding: 10px 18px; cursor: pointer;"
+                        onclick="window.connectBluetoothDevice(event)">
+                        📡 Sambung Bluetooth (SPP)
+                    </button>
+                </div>
+
+                <!-- TERMINAL DIAGNOSTIK USB REALTIME -->
+                <div
+                    style="background: #0f172a; border: 1px solid var(--neon-green); border-radius: 10px; padding: 14px; margin-bottom: 16px;">
+                    <div
+                        style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <span style="font-weight: bold; color: var(--neon-green); font-size: 0.9rem;">📟 USB SERIAL
+                            DIAGNOSTIC TERMINAL LOG</span>
+                        <button type="button"
+                            onclick="const t=document.getElementById('usbAdminTerminalLogs'); if(t) t.innerText='[SYSTEM]: Log dibersihkan.';"
+                            style="background: rgba(255,255,255,0.1); border: none; color: #aaa; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; cursor: pointer;">Clear
+                            Log</button>
+                    </div>
+                    <div id="usbAdminTerminalLogs"
+                        style="height: 140px; overflow-y: auto; background: #020617; border-radius: 6px; padding: 10px; font-size: 0.8rem; color: #38bdf8; font-family: monospace; white-space: pre-wrap; border: 1px solid rgba(56, 189, 248, 0.2);">
+                        [SYSTEM]: Diagnostik USB Mod Guru sedia. Sila klik 'Sambung Kabel USB Serial'.</div>
+                </div>
+
+                <!-- BUTANG UJIAN MANUAL HARDWARE -->
+                <h4 style="color: #fff; margin-bottom: 8px; font-size: 0.9rem;">🧪 Ujian Kawalan Perkakasan (Manual
+                    Trigger):</h4>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 14px;">
+                    <button type="button" class="btn-primary-neon" onclick="window.sendUSBSignal('O\n')"
+                        style="background: #10b981; color: #fff; font-weight: bold; padding: 10px; font-size: 0.85rem;">🚀
+                        Buka Tong ('O')</button>
+                    <button type="button" class="btn-primary-neon" onclick="window.sendUSBSignal('C\n')"
+                        style="background: #ef4444; color: #fff; font-weight: bold; padding: 10px; font-size: 0.85rem;">🛑
+                        Tutup Tong ('C')</button>
+                    <button type="button" class="btn-primary-neon" onclick="window.sendUSBSignal('T\n')"
+                        style="background: #38bdf8; color: #000; font-weight: bold; padding: 10px; font-size: 0.85rem;">🔄
+                        Toggle ('T')</button>
+                </div>
+
+                <!-- HANTAR ARAHAN CUSTOM -->
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="adminCustomUsbCmdInput" placeholder="Taip aksara arahan (cth: O, C, T, 1)..."
+                        class="input-custom" style="flex: 1; padding: 8px;">
+                    <button type="button" class="btn-primary-neon"
+                        onclick="const v=document.getElementById('adminCustomUsbCmdInput').value; if(v) window.sendUSBSignal(v+'\n');"
+                        style="padding: 8px 16px;">Hantar Arahan</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skrip JavaScript Utama -->
+    <script src="script.js"></script>
+
+    <script>
+        // GLOBAL NAVIGATION FUNCTION (EXECUTES IMMEDIATELY ON CLICK)
+        window.navigateToScreen = function (screenId) {
+            const screens = document.querySelectorAll('.screen');
+            screens.forEach(s => {
+                s.classList.remove('active');
+                s.style.display = 'none';
+            });
+
+            const target = document.getElementById(screenId);
+            if (target) {
+                target.classList.add('active');
+                target.style.display = 'flex';
+            }
+
+            if (screenId !== 'screen-4') {
+                if (typeof stopCamera === 'function') {
+                    try { stopCamera(); } catch (e) { }
+                }
+                if (typeof window.stopCamera === 'function') {
+                    try { window.stopCamera(); } catch (e) { }
+                }
+            } else if (screenId === 'screen-4') {
+                if (typeof window.startCamera === 'function') {
+                    try { window.startCamera(); } catch (e) { }
+                } else if (typeof startCamera === 'function') {
+                    try { startCamera(); } catch (e) { }
+                }
+            }
+
+            if (screenId === 'screen-4' && typeof window.renderActiveBarcodesGuide === 'function') {
+                try { window.renderActiveBarcodesGuide(); } catch (e) { }
+            }
+
+            if (typeof window.syncAllStudentViews === 'function') {
+                try { window.syncAllStudentViews(); } catch (e) { }
+            }
+        };
+
+        window.showScreen = window.navigateToScreen;
+
+        window.renderActiveBarcodesGuide = function () {
+            const container = document.getElementById('activeBarcodesChips');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+
+            let barcodes = loadBarcodesFromStorage();
+            if (!barcodes || barcodes.length === 0) {
+                const rawData = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+                if (rawData) {
+                    try {
+                        const parsed = JSON.parse(rawData);
+                        if (Array.isArray(parsed)) barcodes = parsed;
+                    } catch (e) { }
+                }
+            }
+            if ((!barcodes || barcodes.length === 0) && typeof getLatestBarcodes === 'function') {
+                barcodes = getLatestBarcodes();
+            }
+
+            const activeList = (barcodes || []).filter(b => {
+                if (typeof extractUsedFromItem === 'function') return !extractUsedFromItem(b);
+                return !b.used;
+            });
+
+            if (dropdown) {
+                dropdown.innerHTML = '<option value="">-- Sila Pilih Kod Sampah Berdaftar --</option>' +
+                    activeList.map(b => {
+                        const code = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                        const category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                        const points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+                        return `<option value="${code}">🏷️ ${code} (${category} • +${points} Mata)</option>`;
+                    }).join('');
+            }
+
+            if (container) {
+                if (activeList.length === 0) {
+                    container.innerHTML = '<span style="font-size: 0.8rem; color: #aaa;">Tiada kod sampah aktif. Guru boleh menambah kod baharu dalam Mod Guru.</span>';
+                } else {
+                    container.innerHTML = activeList.map(b => {
+                        const code = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                        const category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                        const points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+
+                        return `<button type="button" class="badge-code-chip" onclick="window.selectActiveCodeChip('${code}')" style="background: rgba(16, 185, 129, 0.2); border: 1px solid var(--neon-green); color: #fff; padding: 4px 10px; border-radius: 20px; font-size: 0.8rem; cursor: pointer; transition: all 0.2s ease;">
+                            🏷️ <strong>${code}</strong> (${category} • +${points}m)
+                        </button>`;
+                    }).join('');
+                }
+            }
+        };
+
+        window.selectActiveCodeChip = function (code) {
+            const input = document.getElementById('manualBarcodeInput');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+            if (input) {
+                input.value = code;
+                input.focus();
+            }
+            if (dropdown) {
+                dropdown.value = code;
+            }
+        };
+
+        window.selectActiveBarcodeFromDropdown = function (code) {
+            if (!code) return;
+            const input = document.getElementById('manualBarcodeInput');
+            if (input) {
+                input.value = code;
+            }
+            window.submitManualBarcode();
+        };
+
+        window.submitManualBarcode = function () {
+            const input = document.getElementById('manualBarcodeInput');
+            const dropdown = document.getElementById('selectActiveBarcodeDropdown');
+            const val = (input && input.value.trim()) ? input.value.trim() : (dropdown && dropdown.value.trim() ? dropdown.value.trim() : '');
+
+            if (!val) return;
+            if (typeof window.processBarcode === 'function') {
+                window.processBarcode(val);
+            } else if (typeof processBarcode === 'function') {
+                processBarcode(val);
+            }
+            if (input) input.value = '';
+            if (dropdown) dropdown.value = '';
+        };
+
+        window.handleOpenBinAction = async function (e) {
+            if (e && e.preventDefault) e.preventDefault();
+
+            if (window.isBinActionProcessing) return;
+            window.isBinActionProcessing = true;
+            setTimeout(() => { window.isBinActionProcessing = false; }, 1500);
+
+            let item = window.pendingScannedItem || (typeof pendingScannedItem !== 'undefined' ? pendingScannedItem : null);
+            if (!item) {
+                item = {
+                    code: "ECO-1001",
+                    category: "Botol Plastik",
+                    points: 10,
+                    used: false
+                };
+            }
+
+            // Semak semula mata ganjaran terkini mengikut tetapan Mod Guru
+            const latestBarcodesList = typeof loadBarcodesFromStorage === 'function' ? loadBarcodesFromStorage() : [];
+            if (item && item.code && Array.isArray(latestBarcodesList)) {
+                const matchedBarcodeInStorage = latestBarcodesList.find(b => {
+                    const bCode = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || '');
+                    return String(bCode).toUpperCase() === String(item.code).toUpperCase();
+                });
+                if (matchedBarcodeInStorage) {
+                    item.points = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.points || item.points);
+                    item.category = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(matchedBarcodeInStorage) : (matchedBarcodeInStorage.category || item.category);
+                }
+            }
+
+            let currentStudent = window.getCurrentActiveStudent ? window.getCurrentActiveStudent() : null;
+            if (!currentStudent) {
+                try {
+                    currentStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+                } catch (err) { }
+            }
+
+            let allStudents = loadStudentsFromStorage();
+            if (currentStudent) {
+                const latestInList = allStudents.find(s => String(s.id) === String(currentStudent.id));
+                if (latestInList) currentStudent = latestInList;
+            } else if (allStudents.length > 0) {
+                currentStudent = allStudents[0];
+            } else {
+                currentStudent = {
+                    id: "STU-001",
+                    name: "Ahmad Albab",
+                    tingkatan: "Tingkatan 1",
+                    kelas: "Is",
+                    points: 120,
+                    history: []
+                };
+            }
+
+            if (typeof triggerArduinoLidSimulation === 'function') {
+                try { triggerArduinoLidSimulation(); } catch (err) { }
+            }
+
+            if (typeof bluetoothGattServer !== 'undefined' && bluetoothGattServer && bluetoothGattServer.connected && bluetoothCharacteristic) {
+                try {
+                    const encoder = new TextEncoder();
+                    await bluetoothCharacteristic.writeValue(encoder.encode('OPEN\n'));
+                    console.log("Isyarat OPEN dihantar ke Arduino!");
+                } catch (btErr) {
+                    console.warn("Bluetooth send error:", btErr);
+                }
+            }
+
+            item.used = true;
+            const pts = parseInt(item.points) || 10;
+            currentStudent.points = (parseInt(currentStudent.points) || 0) + pts;
+
+            if (!currentStudent.history) currentStudent.history = [];
+            currentStudent.history.unshift({
+                category: item.category || "Sampah Kitar Semula",
+                points: pts,
+                date: new Date().toLocaleDateString('ms-MY')
+            });
+
+            // Simpan data pelajar terkini ke pangkalan data tempatan secara kekal
+            const studentIdx = allStudents.findIndex(s => String(s.id) === String(currentStudent.id));
+            if (studentIdx !== -1) {
+                allStudents[studentIdx] = currentStudent;
+            } else {
+                allStudents.push(currentStudent);
+            }
+
+            saveStudentsToStorage(allStudents);
+            localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(currentStudent));
+            window.currentStudent = currentStudent;
+
+            // Simpan status barkod yang telah digunakan
+            const rawBarcodes = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+            if (rawBarcodes) {
+                try {
+                    const barcodesList = JSON.parse(rawBarcodes);
+                    const itemCodeUpper = String(item.code || '').toUpperCase();
+                    if (Array.isArray(barcodesList)) {
+                        barcodesList.forEach(b => {
+                            const bCode = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                            if (String(bCode).toUpperCase() === itemCodeUpper) {
+                                if (typeof b === 'object' && !Array.isArray(b)) {
+                                    b.used = true;
+                                }
+                            }
+                        });
+                        localStorage.setItem('eco_barcodes', JSON.stringify(barcodesList));
+                        localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodesList));
+                    }
+                } catch (e) { }
+            }
+
+            if (typeof saveData === 'function') {
+                try { saveData(); } catch (e) { }
+            }
+
+            if (typeof window.syncAllStudentViews === 'function') {
+                try { window.syncAllStudentViews(); } catch (e) { }
+            }
+            if (typeof window.renderActiveBarcodesGuide === 'function') {
+                try { window.renderActiveBarcodesGuide(); } catch (e) { }
+            }
+
+            const awardedElem = document.getElementById('awardedPointsDisplay');
+            const totalElem = document.getElementById('newTotalPointsDisplay');
+
+            if (awardedElem) awardedElem.innerText = `+${pts}`;
+            if (totalElem) totalElem.innerText = `${currentStudent.points} Points`;
+
+            if (typeof window.navigateToScreen === 'function') {
+                window.navigateToScreen('screen-6');
+            } else if (typeof window.showScreen === 'function') {
+                window.showScreen('screen-6');
+            }
+        };
+
+        // Module IndexedDB untuk Video
+        const VideoDB = {
+            dbName: 'EcoPulseMediaDB',
+            storeName: 'videoStore',
+
+            openDB: function () {
+                return new Promise((resolve, reject) => {
+                    const request = indexedDB.open(this.dbName, 1);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains(this.storeName)) {
+                            db.createObjectStore(this.storeName);
+                        }
+                    };
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            },
+
+            saveVideoBlob: async function (fileBlob) {
+                const db = await this.openDB();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(this.storeName, 'readwrite');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.put(fileBlob, 'promoVideo');
+                    request.onsuccess = () => resolve(true);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            },
+
+            getVideoBlob: async function () {
+                const db = await this.openDB();
+                return new Promise((resolve, reject) => {
+                    const transaction = db.transaction(this.storeName, 'readonly');
+                    const store = transaction.objectStore(this.storeName);
+                    const request = store.get('promoVideo');
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onerror = (e) => reject(e.target.error);
+                });
+            }
+        };
+
+        // GLOBAL DATA MANAGEMENT PELAJAR (LOCALSTORAGE)
+        const defaultStudentsList = [
+            { id: "STU-001", name: "Ahmad Albab", tingkatan: "Tingkatan 1", kelas: "Is", points: 120, history: [] },
+            { id: "STU-002", name: "Siti Nurhaliza", tingkatan: "Tingkatan 2", kelas: "Is", points: 85, history: [] },
+            { id: "STU-003", name: "Muhammad Ali", tingkatan: "Tingkatan 3", kelas: "Ik", points: 150, history: [] },
+            { id: "STU-004", name: "Nur Aisyah", tingkatan: "Tingkatan 4", kelas: "Ir", points: 95, history: [] },
+            { id: "STU-005", name: "Khairul Amri", tingkatan: "Tingkatan 5", kelas: "Ia", points: 210, history: [] }
+        ];
+
+        function loadStudentsFromStorage() {
+            const data = localStorage.getItem('ecoPulseStudents') || localStorage.getItem('eco_students');
+            if (data) {
+                try {
+                    const parsed = JSON.parse(data);
+                    if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+                } catch (e) {
+                    console.error('Error reading ecoPulseStudents:', e);
+                }
+            }
+            localStorage.setItem('ecoPulseStudents', JSON.stringify(defaultStudentsList));
+            localStorage.setItem('eco_students', JSON.stringify(defaultStudentsList));
+            return defaultStudentsList;
+        }
+
+        function saveStudentsToStorage(students) {
+            localStorage.setItem('ecoPulseStudents', JSON.stringify(students));
+            localStorage.setItem('eco_students', JSON.stringify(students));
+            if (window.syncAllStudentViews) {
+                window.syncAllStudentViews();
+            }
+        }
+
+        function cleanString(str) {
+            return (str || '').toString().toLowerCase().replace(/[^a-z0-9]/g, '');
+        }
+
+        let selectedStudentIdForLogin = null;
+
+        window.getCurrentActiveStudent = function () {
+            let student = null;
+            const rawCurrent = localStorage.getItem('ecoPulseCurrentStudent');
+            if (rawCurrent) {
+                try {
+                    student = JSON.parse(rawCurrent);
+                } catch (e) { }
+            }
+
+            if (!student) {
+                const allStudents = loadStudentsFromStorage();
+                if (allStudents.length > 0) {
+                    student = allStudents[0];
+                    localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+                }
+            }
+
+            if (student) {
+                const allStudents = loadStudentsFromStorage();
+                const latest = allStudents.find(s => String(s.id) === String(student.id));
+                if (latest) {
+                    student = latest;
+                    localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+                }
+            }
+
+            window.currentStudent = student;
+            return student;
+        };
+
+        // Fungsi Utama Log Masuk Pelajar ke Dashboard (Screen 3)
+        window.loginStudentAndEnterSystem = function (studentId) {
+            const students = loadStudentsFromStorage();
+            const student = students.find(s => String(s.id) === String(studentId));
+            if (!student) {
+                alert('⚠️ Sila pilih nama pelajar terlebih dahulu daripada senarai!');
+                return;
+            }
+
+            selectedStudentIdForLogin = student.id;
+            localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(student));
+            window.currentStudent = student;
+
+            // Kemaskini Paparan Profil Pelajar (Screen 3)
+            const nameElem = document.getElementById('displayStudentName');
+            const classElem = document.getElementById('displayStudentClass');
+            const pointsElem = document.getElementById('displayStudentPoints');
+            const historyList = document.getElementById('studentActivityList');
+
+            if (nameElem) nameElem.textContent = student.name;
+            if (classElem) classElem.textContent = `${student.tingkatan || ''} ${student.kelas || ''}`;
+            if (pointsElem) pointsElem.textContent = student.points || 0;
+
+            if (historyList) {
+                historyList.innerHTML = '';
+                if (!student.history || student.history.length === 0) {
+                    historyList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">Belum ada sejarah kitar semula.</p>';
+                } else {
+                    student.history.forEach(item => {
+                        historyList.innerHTML += `
+                            <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                <span>${item.category && item.category.includes('Tebus') ? '🎁' : '♻️'} ${item.category}</span>
+                                <strong style="color: ${item.points < 0 ? '#ef4444' : 'var(--neon-green)'};">${item.points > 0 ? '+' : ''}${item.points} Mata</strong>
+                            </div>
+                        `;
+                    });
+                }
+            }
+
+            // Tukar Skrin ke Screen 3
+            if (typeof showScreen === 'function') {
+                showScreen('screen-3');
+            } else {
+                document.querySelectorAll('.screen').forEach(s => {
+                    s.classList.remove('active');
+                    s.style.display = 'none';
+                });
+                const screen3 = document.getElementById('screen-3');
+                if (screen3) {
+                    screen3.classList.add('active');
+                    screen3.style.display = 'block';
+                }
+            }
+        };
+
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Jam Digital
+            const heroDigitalClock = document.getElementById('heroDigitalClock');
+            const heroDigitalDate = document.getElementById('heroDigitalDate');
+            const studentDashboardDate = document.getElementById('studentDashboardDate');
+
+            function updateClockAndDate() {
+                const now = new Date();
+                let hours = now.getHours();
+                const minutes = String(now.getMinutes()).padStart(2, '0');
+                const seconds = String(now.getSeconds()).padStart(2, '0');
+                const ampm = hours >= 12 ? 'PM' : 'AM';
+                hours = hours % 12 || 12;
+                const formattedHours = String(hours).padStart(2, '0');
+
+                if (heroDigitalClock) heroDigitalClock.textContent = `${formattedHours}:${minutes}:${seconds} ${ampm}`;
+
+                const days = ['Ahad', 'Isnin', 'Selasa', 'Rabu', 'Khamis', 'Jumaat', 'Sabtu'];
+                const months = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
+
+                const formattedDate = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
+                if (heroDigitalDate) heroDigitalDate.textContent = formattedDate;
+                if (studentDashboardDate) studentDashboardDate.textContent = `📅 ${formattedDate}`;
+            }
+
+            setInterval(updateClockAndDate, 1000);
+            updateClockAndDate();
+
+            // Muat Video
+            const mainPromoVideo = document.getElementById('mainPromoVideo');
+            try {
+                const savedVideoBlob = await VideoDB.getVideoBlob();
+                if (savedVideoBlob && mainPromoVideo) {
+                    mainPromoVideo.src = URL.createObjectURL(savedVideoBlob);
+                    mainPromoVideo.load();
+                    mainPromoVideo.play().catch(e => console.log('Autoplay ditahan:', e));
+                }
+            } catch (err) {
+                console.error('Gagal mengambil video:', err);
+            }
+
+            // Muat Banner
+            const dashboardHeroBanner = document.getElementById('dashboardHeroBanner');
+            const savedBanner = localStorage.getItem('customDashboardBanner');
+            if (savedBanner && dashboardHeroBanner) {
+                dashboardHeroBanner.style.backgroundImage = `url('${savedBanner}')`;
+                dashboardHeroBanner.style.backgroundSize = 'cover';
+                dashboardHeroBanner.style.backgroundPosition = 'center';
+            }
+
+            // -------------------------------------------------------------
+            // FUNGSI MUAT NAIK & SIMPAN VIDEO BESAR (INDEXEDDB) - MOD GURU
+            // -------------------------------------------------------------
+            const videoFileInput = document.getElementById('adminVideoFileInput');
+            const videoPreviewContainer = document.getElementById('videoPreviewContainer');
+            const adminVideoPreview = document.getElementById('adminVideoPreview');
+            const btnSaveVideo = document.getElementById('btnSaveVideo');
+            const videoUploadStatus = document.getElementById('videoUploadStatus');
+            let selectedVideoFile = null;
+
+            if (videoFileInput) {
+                videoFileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        selectedVideoFile = file;
+                        const tempUrl = URL.createObjectURL(file);
+                        if (adminVideoPreview) {
+                            adminVideoPreview.src = tempUrl;
+                        }
+                        if (videoPreviewContainer) {
+                            videoPreviewContainer.style.display = 'block';
+                        }
+                        if (videoUploadStatus) {
+                            videoUploadStatus.style.display = 'block';
+                            videoUploadStatus.style.color = '#38bdf8';
+                            videoUploadStatus.textContent = `📁 Fail dipilih: ${file.name} (${(file.size / (1024 * 1024)).toFixed(2)} MB)`;
+                        }
+                    }
+                });
+            }
+
+            if (btnSaveVideo) {
+                btnSaveVideo.addEventListener('click', async () => {
+                    if (!selectedVideoFile) {
+                        alert('⚠️ Sila pilih fail video terlebih dahulu!');
+                        return;
+                    }
+
+                    btnSaveVideo.disabled = true;
+                    btnSaveVideo.textContent = '⏳ Menyimpan Video... Sila Tunggu';
+
+                    if (videoUploadStatus) {
+                        videoUploadStatus.style.display = 'block';
+                        videoUploadStatus.style.color = '#f59e0b';
+                        videoUploadStatus.textContent = 'Memproses dan menyimpan fail video ke pangkalan data tempatan (IndexedDB)...';
+                    }
+
+                    try {
+                        await VideoDB.saveVideoBlob(selectedVideoFile);
+                        const videoUrl = URL.createObjectURL(selectedVideoFile);
+                        if (mainPromoVideo) {
+                            mainPromoVideo.src = videoUrl;
+                            mainPromoVideo.load();
+                            mainPromoVideo.play().catch(e => console.log('Autoplay play error:', e));
+                        }
+
+                        alert('✅ Video Dashboard bersaiz besar berjaya disimpan secara kekal!');
+                        if (videoUploadStatus) {
+                            videoUploadStatus.style.color = '#10b981';
+                            videoUploadStatus.textContent = '✅ Video berjaya disimpan secara kekal!';
+                        }
+                    } catch (err) {
+                        console.error('Ralat simpan video:', err);
+                        alert('❌ Gagal menyimpan video. Pastikan ruang storan peranti anda mencukupi.');
+                        if (videoUploadStatus) {
+                            videoUploadStatus.style.color = '#ef4444';
+                            videoUploadStatus.textContent = '❌ Gagal menyimpan video.';
+                        }
+                    } finally {
+                        btnSaveVideo.disabled = false;
+                        btnSaveVideo.textContent = '💾 SIMPAN VIDEO DASHBOARD';
+                    }
+                });
+            }
+
+            // -------------------------------------------------------------
+            // FUNGSI MUAT NAIK & SIMPAN BANNER DASHBOARD - MOD GURU
+            // -------------------------------------------------------------
+            const bgFileInput = document.getElementById('adminDashboardBgInput');
+            const bannerPreviewContainer = document.getElementById('bannerPreviewContainer');
+            const adminBannerPreview = document.getElementById('adminBannerPreview');
+            const btnSaveBanner = document.getElementById('btnSaveBanner');
+
+            if (bgFileInput) {
+                bgFileInput.addEventListener('change', (e) => {
+                    const file = e.target.files[0];
+                    if (file) {
+                        const tempBannerUrl = URL.createObjectURL(file);
+                        if (adminBannerPreview) {
+                            adminBannerPreview.src = tempBannerUrl;
+                        }
+                        if (bannerPreviewContainer) {
+                            bannerPreviewContainer.style.display = 'block';
+                        }
+                    }
+                });
+            }
+
+            if (btnSaveBanner) {
+                btnSaveBanner.addEventListener('click', () => {
+                    const file = bgFileInput ? bgFileInput.files[0] : null;
+                    if (!file) {
+                        alert('⚠️ Sila pilih gambar banner terlebih dahulu!');
+                        return;
+                    }
+                    const reader = new FileReader();
+                    reader.onload = function (e) {
+                        const base64Img = e.target.result;
+                        localStorage.setItem('customDashboardBanner', base64Img);
+                        if (dashboardHeroBanner) {
+                            dashboardHeroBanner.style.backgroundImage = `url('${base64Img}')`;
+                            dashboardHeroBanner.style.backgroundSize = 'cover';
+                            dashboardHeroBanner.style.backgroundPosition = 'center';
+                        }
+                        alert('✅ Banner Dashboard berjaya disimpan!');
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            // Render & Kemaskini Semua Senarai Pelajar
+            window.renderStudentsDynamic = function () {
+                const students = loadStudentsFromStorage();
+
+                // 1. Senarai Admin dengan Gambar & Butang Edit
+                const adminList = document.getElementById('adminStudentManageList');
+                if (adminList) {
+                    if (students.length === 0) {
+                        adminList.innerHTML = `<p style="color: var(--text-muted); text-align: center;">Tiada pelajar berdaftar.</p>`;
+                    } else {
+                        adminList.innerHTML = students.map((s, index) => `
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding: 8px; border-bottom: 1px solid rgba(255,255,255,0.1); gap: 8px;">
+                                <div style="display:flex; align-items:center; gap: 10px;">
+                                    <span><strong>${s.name}</strong> (${s.tingkatan || '-'} ${s.kelas || '-'}) - <span style="color: var(--neon-green);">${s.points || 0} PTS</span></span>
+                                </div>
+                                <div style="display:flex; gap: 5px;">
+                                    <button type="button" onclick="editStudentDynamic('${s.id}')" style="background:#38bdf8; border:none; color:#000; padding:2px 8px; border-radius:4px; cursor:pointer; font-weight:bold;">Edit</button>
+                                    <button type="button" onclick="deleteStudentDynamic(${index})" style="background:#ef4444; border:none; color:#fff; padding:2px 8px; border-radius:4px; cursor:pointer;">Hapus</button>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+
+                // 2. Senarai Skrin Login / Profil Pelajar (Screen 2) - Dengan Penapis Tingkatan & Kelas
+                filterAndDisplayStudentsScreen2();
+
+                // 3. Dropdown Senarai Pelajar Pada Pilihan Tebus (Screen 7)
+                filterAndDisplayStudentsRedeemScreen();
+
+                // 4. Kemaskini Profil Aktif (jika sedang log masuk)
+                const activeStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+                if (activeStudent) {
+                    const currentData = students.find(s => String(s.id) === String(activeStudent.id));
+                    if (currentData) {
+                        localStorage.setItem('ecoPulseCurrentStudent', JSON.stringify(currentData));
+                        const nameElem = document.getElementById('displayStudentName');
+                        const classElem = document.getElementById('displayStudentClass');
+                        const pointsElem = document.getElementById('displayStudentPoints');
+
+                        if (nameElem) nameElem.textContent = currentData.name;
+                        if (classElem) classElem.textContent = `${currentData.tingkatan || ''} ${currentData.kelas || ''}`;
+                        if (pointsElem) pointsElem.textContent = currentData.points || 0;
+                    }
+                }
+            };
+
+            function filterAndDisplayStudentsScreen2() {
+                const students = loadStudentsFromStorage();
+                const studentListContainer = document.getElementById('studentListContainer');
+                if (!studentListContainer) return;
+
+                const selectedTingkatan = document.getElementById('selectTingkatan')?.value || '';
+                const selectedKelas = document.getElementById('selectKelas')?.value || '';
+                const searchInput = cleanString(document.getElementById('studentSearchInput')?.value || '');
+
+                const filtered = students.filter(s => {
+                    const matchT = !selectedTingkatan || cleanString(s.tingkatan) === cleanString(selectedTingkatan);
+                    const matchK = !selectedKelas || cleanString(s.kelas) === cleanString(selectedKelas);
+                    const matchName = !searchInput || cleanString(s.name).includes(searchInput);
+                    return matchT && matchK && matchName;
+                });
+
+                if (filtered.length === 0) {
+                    studentListContainer.innerHTML = `<p style="color: var(--text-muted); text-align: center; width: 100%; padding: 20px;">Tiada pelajar dijumpai.</p>`;
+                } else {
+                    studentListContainer.innerHTML = filtered.map(s => {
+                        const isSelected = String(s.id) === String(selectedStudentIdForLogin);
+                        return `
+                            <div class="student-card ${isSelected ? 'selected' : ''}" data-id="${s.id}" style="display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: ${isSelected ? 'rgba(16, 185, 129, 0.25)' : 'rgba(15, 23, 42, 0.6)'}; border: 2px solid ${isSelected ? 'var(--neon-green)' : 'var(--border-glass)'}; border-radius: 10px; margin-bottom: 10px; cursor: pointer; transition: all 0.2s ease;">
+                                <div style="display: flex; align-items: center; gap: 14px; pointer-events: none;">
+                                    <div>
+                                        <div style="font-weight: bold; color: #fff; font-size: 1.05rem;">${s.name}</div>
+                                        <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 2px;">${s.tingkatan || ''} ${s.kelas || ''}</div>
+                                    </div>
+                                </div>
+                                <div style="color: var(--neon-green); font-weight: 700; font-size: 0.95rem; pointer-events: none;">${s.points || 0} PTS</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    // Re-bind click event untuk memilih profil pelajar di Screen 2
+                    document.querySelectorAll('#studentListContainer .student-card').forEach(card => {
+                        const id = card.getAttribute('data-id');
+
+                        card.addEventListener('click', () => {
+                            // Pilih profil pelajar
+                            document.querySelectorAll('#studentListContainer .student-card').forEach(c => {
+                                c.classList.remove('selected');
+                                c.style.background = 'rgba(15, 23, 42, 0.6)';
+                                c.style.borderColor = 'var(--border-glass)';
+                            });
+
+                            card.classList.add('selected');
+                            card.style.background = 'rgba(16, 185, 129, 0.25)';
+                            card.style.borderColor = 'var(--neon-green)';
+                            selectedStudentIdForLogin = id;
+                        });
+
+                        // Dblclick pada kad untuk terus masuk
+                        card.addEventListener('dblclick', () => {
+                            window.loginStudentAndEnterSystem(id);
+                        });
+                    });
+                }
+            }
+
+            // Penapis Senarai Pelajar Pada Pusat Penebusan Ganjaran (Screen 7)
+            function filterAndDisplayStudentsRedeemScreen() {
+                const students = loadStudentsFromStorage();
+                const selectRedeemStudent = document.getElementById('selectRedeemStudent');
+                if (!selectRedeemStudent) return;
+
+                const selectedTingkatan = document.getElementById('selectRedeemTingkatan')?.value || '';
+                const selectedKelas = document.getElementById('selectRedeemKelas')?.value || '';
+                const searchInput = cleanString(document.getElementById('redeemStudentSearchInput')?.value || '');
+
+                const prevValue = selectRedeemStudent.value;
+
+                const filtered = students.filter(s => {
+                    const matchT = !selectedTingkatan || cleanString(s.tingkatan) === cleanString(selectedTingkatan) || cleanString(s.tingkatan).includes(cleanString(selectedTingkatan)) || cleanString(selectedTingkatan).includes(cleanString(s.tingkatan));
+                    const matchK = !selectedKelas || cleanString(s.kelas) === cleanString(selectedKelas);
+                    const matchName = !searchInput || cleanString(s.name).includes(searchInput);
+                    return matchT && matchK && matchName;
+                });
+
+                if (filtered.length === 0) {
+                    selectRedeemStudent.innerHTML = `<option value="">-- Tiada Pelajar Dijumpai --</option>`;
+                } else {
+                    selectRedeemStudent.innerHTML = `<option value="">-- Pilih Nama Pelajar Untuk Tebus (${filtered.length} Orang) --</option>` +
+                        filtered.map(s => `<option value="${s.id}">${s.name} (${s.tingkatan || ''} ${s.kelas || ''}) - ${s.points || 0} PTS</option>`).join('');
+                }
+
+                if (prevValue && filtered.some(s => String(s.id) === String(prevValue))) {
+                    selectRedeemStudent.value = prevValue;
+                }
+            }
+
+            const defaultRewardsList = [
+                { id: "REW-1", name: "Buku Nota Eco", points: 50, stock: 15, image: "assets/item_notebook.png" },
+                { id: "REW-2", name: "Set Pen Gel Eco", points: 30, stock: 20, image: "assets/item_pen.png" },
+                { id: "REW-3", name: "Botol Minuman Eco", points: 100, stock: 5, image: "assets/item_bottle.png" },
+                { id: "REW-4", name: "Beg Kitar Semula (Tote)", points: 80, stock: 12, image: "assets/item_bag.png" }
+            ];
+
+            function loadRewardsFromStorage() {
+                const data = localStorage.getItem('eco_rewards') || localStorage.getItem('ecoPulseRewards');
+                if (data !== null) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (Array.isArray(parsed)) return parsed;
+                    } catch (e) { }
+                }
+                const defaultRewardsList = [
+                    { id: "R-001", name: "Pensel Warna 12 Set", points: 50, stock: 10, image: "assets/reward-pencil.png" },
+                    { id: "R-002", name: "Buku Nota Eco-Friendly", points: 80, stock: 15, image: "assets/reward-notebook.png" },
+                    { id: "R-003", name: "Botol Air Kitar Semula", points: 150, stock: 5, image: "assets/reward-bottle.png" }
+                ];
+                localStorage.setItem('eco_rewards', JSON.stringify(defaultRewardsList));
+                localStorage.setItem('ecoPulseRewards', JSON.stringify(defaultRewardsList));
+                return defaultRewardsList;
+            }
+
+            function saveRewardsToStorage(rewards) {
+                localStorage.setItem('eco_rewards', JSON.stringify(rewards));
+                localStorage.setItem('ecoPulseRewards', JSON.stringify(rewards));
+                if (typeof window.syncGlobalRewards === 'function') {
+                    window.syncGlobalRewards(rewards);
+                }
+                if (typeof window.renderAdminRewardsList === 'function') {
+                    try { window.renderAdminRewardsList(); } catch (e) { }
+                }
+                if (window.syncAllStudentViews) {
+                    try { window.syncAllStudentViews(); } catch (e) { }
+                }
+            }
+
+            window.renderRewardsCatalogDynamic = function (student) {
+                const container = document.getElementById('rewardsCatalogContainer');
+                if (!container) return;
+
+                const rewards = loadRewardsFromStorage();
+
+                if (!rewards || rewards.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; width: 100%; grid-column: 1/-1; padding: 20px;">Tiada barangan ganjaran yang ditambah.</p>';
+                    return;
+                }
+
+                container.innerHTML = rewards.map((r, index) => {
+                    const stock = r.stock !== undefined ? r.stock : 0;
+                    const hasStock = stock > 0;
+                    const canAfford = student ? ((student.points || 0) >= r.points) : true;
+                    const canRedeem = student ? (hasStock && canAfford) : false;
+
+                    let btnLabel = '🎁 TEBUS BARANG';
+                    let btnStyle = 'background: var(--neon-green); color: #000; cursor: pointer;';
+                    if (!hasStock) {
+                        btnLabel = '❌ STOK HABIS';
+                        btnStyle = 'background: #ef4444; color: #fff; cursor: not-allowed; opacity: 0.7;';
+                    } else if (student && !canAfford) {
+                        btnLabel = '⚠️ MATA TAK CUKUP';
+                        btnStyle = 'background: #64748b; color: #fff; cursor: not-allowed; opacity: 0.7;';
+                    } else if (!student) {
+                        btnLabel = '👤 PILIH PELAJAR DAHULU';
+                        btnStyle = 'background: rgba(51,65,85,0.8); color: #94a3b8; cursor: pointer;';
+                    }
+
+                    return `
+                        <div class="reward-card-item" style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${canRedeem ? 'var(--neon-green)' : 'var(--border-glass)'}; border-radius: 12px; padding: 14px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; transition: transform 0.2s;">
+                            <div style="position: relative; width: 100%; height: 130px; background: rgba(0,0,0,0.3); border-radius: 8px; overflow: hidden; margin-bottom: 10px;">
+                                <img src="${r.image || 'assets/default-reward.png'}" alt="${r.name}" onerror="this.src='assets/default-avatar.png';" style="width: 100%; height: 100%; object-fit: cover;">
+                                <span style="position: absolute; top: 6px; right: 6px; background: ${hasStock ? 'rgba(16,185,129,0.9)' : 'rgba(239, 68, 68, 0.9)'}; color: #fff; font-size: 0.7rem; padding: 2px 8px; border-radius: 10px; font-weight: 700;">
+                                    Stok: ${stock}
+                                </span>
+                            </div>
+                            <h4 style="color: #fff; font-size: 1rem; margin: 4px 0;">${r.name}</h4>
+                            <p style="color: var(--neon-green); font-weight: 800; font-size: 1.1rem; margin: 4px 0;">${r.points} Mata</p>
+                            <button type="button" class="btn-primary-neon btn-redeem-item" data-id="${r.id || (index + 1)}" data-index="${index}" data-points="${r.points}" ${!canRedeem && student ? 'disabled' : ''} style="width: 100%; margin-top: 8px; padding: 8px; font-size: 0.85rem; ${btnStyle}">
+                                ${btnLabel}
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+            };
+
+            function populateAllDropdownsFromStorage() {
+                const students = loadStudentsFromStorage();
+
+                const defaultTingkatan = ["Tingkatan 1", "Tingkatan 2", "Tingkatan 3", "Tingkatan 4", "Tingkatan 5"];
+                const tingkatanSet = new Set(defaultTingkatan);
+                students.forEach(s => {
+                    if (s.tingkatan && s.tingkatan.trim()) tingkatanSet.add(s.tingkatan.trim());
+                });
+                const allTingkatan = Array.from(tingkatanSet);
+
+                const defaultKelas = ["Is", "Ik", "Ir", "Ia"];
+                const kelasSet = new Set(defaultKelas);
+                students.forEach(s => {
+                    if (s.kelas && s.kelas.trim()) kelasSet.add(s.kelas.trim());
+                });
+                const allKelas = Array.from(kelasSet);
+
+                ['selectTingkatan', 'selectRedeemTingkatan'].forEach(id => {
+                    const elem = document.getElementById(id);
+                    if (elem) {
+                        const currentVal = elem.value;
+                        elem.innerHTML = '<option value="">-- Semua Tingkatan --</option>' +
+                            allTingkatan.map(t => `<option value="${t}">${t}</option>`).join('');
+                        if (currentVal && allTingkatan.includes(currentVal)) {
+                            elem.value = currentVal;
+                        }
+                    }
+                });
+
+                ['selectKelas', 'selectRedeemKelas'].forEach(id => {
+                    const elem = document.getElementById(id);
+                    if (elem) {
+                        const currentVal = elem.value;
+                        elem.innerHTML = '<option value="">-- Semua Kelas --</option>' +
+                            allKelas.map(k => `<option value="${k}">${k}</option>`).join('');
+                        if (currentVal && allKelas.includes(currentVal)) {
+                            elem.value = currentVal;
+                        }
+                    }
+                });
+            }
+
+            window.syncAllStudentViews = function () {
+                populateAllDropdownsFromStorage();
+                if (typeof window.renderStudentsDynamic === 'function') {
+                    window.renderStudentsDynamic();
+                }
+                filterAndDisplayStudentsRedeemScreen();
+                if (typeof updateRedeemStudentList === 'function') {
+                    updateRedeemStudentList();
+                }
+
+                // Kemaskini Profil Pelajar Aktif (Screen 3)
+                let current = null;
+                if (typeof window.getCurrentActiveStudent === 'function') {
+                    current = window.getCurrentActiveStudent();
+                }
+                if (current) {
+                    const nameElem = document.getElementById('displayStudentName');
+                    const classElem = document.getElementById('displayStudentClass');
+                    const pointsElem = document.getElementById('displayStudentPoints');
+                    const historyList = document.getElementById('studentActivityList');
+
+                    if (nameElem) nameElem.textContent = current.name;
+                    if (classElem) classElem.textContent = `${current.tingkatan || ''} ${current.kelas || ''}`;
+                    if (pointsElem) pointsElem.textContent = current.points || 0;
+
+                    if (historyList) {
+                        historyList.innerHTML = '';
+                        if (!current.history || current.history.length === 0) {
+                            historyList.innerHTML = '<p style="color: var(--text-muted); font-size: 0.85rem; padding: 10px; text-align: center;">Belum ada sejarah kitar semula.</p>';
+                        } else {
+                            current.history.forEach(item => {
+                                historyList.innerHTML += `
+                                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.08);">
+                                        <span>${item.category && item.category.includes('Tebus') ? '🎁' : '♻️'} ${item.category}</span>
+                                        <strong style="color: ${item.points < 0 ? '#ef4444' : 'var(--neon-green)'};">${item.points > 0 ? '+' : ''}${item.points} Mata</strong>
+                                    </div>
+                                `;
+                            });
+                        }
+                    }
+                }
+
+                const selectRedeemStudent = document.getElementById('selectRedeemStudent');
+                const studentId = selectRedeemStudent ? selectRedeemStudent.value : '';
+                const students = loadStudentsFromStorage();
+                const student = students.find(s => String(s.id) === String(studentId)) || null;
+                window.renderRewardsCatalogDynamic(student);
+            };
+
+            // Event Listener Penapis Pusat Penebusan Ganjaran (Screen 7)
+            document.getElementById('selectRedeemTingkatan')?.addEventListener('change', filterAndDisplayStudentsRedeemScreen);
+            document.getElementById('selectRedeemKelas')?.addEventListener('change', filterAndDisplayStudentsRedeemScreen);
+            document.getElementById('redeemStudentSearchInput')?.addEventListener('input', filterAndDisplayStudentsRedeemScreen);
+
+            // Pengendali Butang Penebusan Item (Screen 7)
+            document.addEventListener('click', (e) => {
+                if (e.target && e.target.classList.contains('btn-redeem-item')) {
+                    const itemCard = e.target.closest('.reward-card-item');
+                    const itemName = itemCard ? itemCard.querySelector('h4')?.textContent : 'Barangan Ganjaran';
+                    const itemPoints = parseInt(e.target.getAttribute('data-points')) || 0;
+                    const rewardIndex = parseInt(e.target.getAttribute('data-index'));
+
+                    const selectRedeemStudent = document.getElementById('selectRedeemStudent');
+                    const studentId = selectRedeemStudent ? selectRedeemStudent.value : '';
+
+                    if (!studentId) {
+                        alert('⚠️ Sila pilih nama pelajar terlebih dahulu sebelum menebus ganjaran!');
+                        return;
+                    }
+
+                    let students = loadStudentsFromStorage();
+                    const studentIndex = students.findIndex(s => String(s.id) === String(studentId));
+
+                    if (studentIndex === -1) {
+                        alert('⚠️ Pelajar tidak dijumpai dalam pangkalan data!');
+                        return;
+                    }
+
+                    let rewards = loadRewardsFromStorage();
+                    let targetRewardIndex = -1;
+                    if (!isNaN(rewardIndex) && rewards[rewardIndex]) {
+                        targetRewardIndex = rewardIndex;
+                    } else {
+                        targetRewardIndex = rewards.findIndex(r => r.name === itemName);
+                    }
+
+                    if (targetRewardIndex === -1 || !rewards[targetRewardIndex]) {
+                        alert('⚠️ Barangan ganjaran ini tidak dijumpai dalam pangkalan data!');
+                        return;
+                    }
+
+                    const targetReward = rewards[targetRewardIndex];
+                    const currentStock = targetReward.stock !== undefined ? targetReward.stock : 0;
+
+                    if (currentStock <= 0) {
+                        alert(`❌ STOK HABIS!\n\nBarangan "${targetReward.name}" telah kehabisan stok di Mod Guru.`);
+                        return;
+                    }
+
+                    const student = students[studentIndex];
+                    if (student.points < itemPoints) {
+                        alert(`❌ Mata ganjaran tidak mencukupi!\nJumlah mata ${student.name}: ${student.points} PTS\nMata diperlukan: ${itemPoints} PTS`);
+                        return;
+                    }
+
+                    if (confirm(`Adakah anda pasti mahu menebus "${targetReward.name}" untuk ${student.name} dengan ${itemPoints} mata?\n(Stok semasa di Mod Guru: ${currentStock})`)) {
+                        // Ditolak Mata Pelajar
+                        students[studentIndex].points -= itemPoints;
+                        if (!students[studentIndex].history) students[studentIndex].history = [];
+                        students[studentIndex].history.unshift({
+                            category: `Tebus: ${targetReward.name}`,
+                            points: -itemPoints,
+                            date: new Date().toLocaleDateString('ms-MY')
+                        });
+
+                        // Ditolak 1 Stok Ganjaran dalam Mod Guru & Simpan
+                        targetReward.stock = Math.max(0, currentStock - 1);
+                        rewards[targetRewardIndex] = targetReward;
+
+                        saveRewardsToStorage(rewards);
+                        saveStudentsToStorage(students);
+
+                        alert(`🎉 Berjaya menebus "${targetReward.name}"!\nBaki stok di Mod Guru kini: ${targetReward.stock}\nBaki mata baharu bagi ${student.name} ialah ${students[studentIndex].points} PTS.`);
+
+                        if (window.syncAllStudentViews) {
+                            window.syncAllStudentViews();
+                        }
+
+                        selectRedeemStudent.value = studentId;
+                        selectRedeemStudent.dispatchEvent(new Event('change'));
+                    }
+                }
+            });
+
+            // Pengendali Butang "MASUK KE SISTEM ➡️"
+            const btnLoginStudent = document.getElementById('btnLoginStudent');
+            if (btnLoginStudent) {
+                btnLoginStudent.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+
+                    if (!selectedStudentIdForLogin) {
+                        const selectedCard = document.querySelector('#studentListContainer .student-card.selected');
+                        if (selectedCard) {
+                            selectedStudentIdForLogin = selectedCard.getAttribute('data-id');
+                        } else {
+                            const firstCard = document.querySelector('#studentListContainer .student-card');
+                            if (firstCard) {
+                                selectedStudentIdForLogin = firstCard.getAttribute('data-id');
+                            }
+                        }
+                    }
+
+                    if (selectedStudentIdForLogin) {
+                        window.loginStudentAndEnterSystem(selectedStudentIdForLogin);
+                    } else {
+                        alert('⚠️ Sila tekan / pilih nama pelajar terlebih dahulu daripada senarai!');
+                    }
+                });
+            }
+
+            const studentSearchInput = document.getElementById('studentSearchInput');
+            if (studentSearchInput) {
+                studentSearchInput.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        if (btnLoginStudent) btnLoginStudent.click();
+                    }
+                });
+            }
+
+            // Butang Utama Screen 1 (Mula Recycle Sekarang & Tebus Ganjaran)
+            window.handleStartApp = function (e) {
+                if (e && e.preventDefault) e.preventDefault();
+                if (window.syncAllStudentViews) {
+                    window.syncAllStudentViews();
+                } else if (typeof renderStudentsDynamic === 'function') {
+                    renderStudentsDynamic();
+                }
+                if (typeof window.showScreen === 'function') {
+                    window.showScreen('screen-2');
+                } else {
+                    document.querySelectorAll('.screen').forEach(s => {
+                        s.classList.remove('active');
+                        s.style.display = 'none';
+                    });
+                    const screen2 = document.getElementById('screen-2');
+                    if (screen2) {
+                        screen2.classList.add('active');
+                        screen2.style.display = 'flex';
+                    }
+                }
+            };
+
+            window.handleGoToRedeemDirect = function (e) {
+                if (e && e.preventDefault) e.preventDefault();
+                if (window.syncAllStudentViews) {
+                    window.syncAllStudentViews();
+                }
+                if (typeof window.showScreen === 'function') {
+                    window.showScreen('screen-7');
+                } else {
+                    document.querySelectorAll('.screen').forEach(s => {
+                        s.classList.remove('active');
+                        s.style.display = 'none';
+                    });
+                    const screen7 = document.getElementById('screen-7');
+                    if (screen7) {
+                        screen7.classList.add('active');
+                        screen7.style.display = 'flex';
+                    }
+                }
+            };
+
+            window.handleBackFromRedeem = function (e) {
+                if (e && e.preventDefault) e.preventDefault();
+                const activeStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+                if (activeStudent) {
+                    if (typeof window.navigateToScreen === 'function') {
+                        window.navigateToScreen('screen-3');
+                    }
+                } else {
+                    if (typeof window.navigateToScreen === 'function') {
+                        window.navigateToScreen('screen-1');
+                    }
+                }
+            };
+
+            // Pengendali Butang Logout / Tukar Pelajar
+            const btnLogoutStudent = document.getElementById('btnLogoutStudent');
+            if (btnLogoutStudent) {
+                btnLogoutStudent.addEventListener('click', () => {
+                    localStorage.removeItem('ecoPulseCurrentStudent');
+                    selectedStudentIdForLogin = null;
+                    renderStudentsDynamic();
+                    if (typeof showScreen === 'function') {
+                        showScreen('screen-2');
+                    } else {
+                        document.querySelectorAll('.screen').forEach(s => {
+                            s.classList.remove('active');
+                            s.style.display = 'none';
+                        });
+                        const screen2 = document.getElementById('screen-2');
+                        if (screen2) {
+                            screen2.classList.add('active');
+                            screen2.style.display = 'block';
+                        }
+                    }
+                });
+            }
+
+            // Button Tebus dari Dashboard Profil (Screen 3)
+            const btnGoToRedeemFromProfile = document.getElementById('btnGoToRedeemFromProfile');
+            if (btnGoToRedeemFromProfile) {
+                btnGoToRedeemFromProfile.addEventListener('click', () => {
+                    const activeStudent = JSON.parse(localStorage.getItem('ecoPulseCurrentStudent') || 'null');
+                    if (typeof showScreen === 'function') {
+                        showScreen('screen-7');
+                    }
+                    if (activeStudent) {
+                        const selectRedeemStudent = document.getElementById('selectRedeemStudent');
+                        if (selectRedeemStudent) {
+                            selectRedeemStudent.value = activeStudent.id;
+                            selectRedeemStudent.dispatchEvent(new Event('change'));
+                        }
+                    }
+                });
+            }
+
+            window.deleteStudentDynamic = function (index) {
+                let students = loadStudentsFromStorage();
+                students.splice(index, 1);
+                saveStudentsToStorage(students);
+                window.renderStudentsDynamic();
+            };
+
+            // Edit Pelajar (Mod Cikgu)
+            window.editStudentDynamic = function (studentId) {
+                const students = loadStudentsFromStorage();
+                const student = students.find(s => String(s.id) === String(studentId));
+                if (!student) return;
+
+                document.getElementById('editingStudentId').value = student.id;
+                document.getElementById('adminNewStudentName').value = student.name;
+                document.getElementById('adminNewStudentTingkatan').value = student.tingkatan || 'Tingkatan 1';
+                document.getElementById('adminNewStudentKelas').value = student.kelas || 'Is';
+                document.getElementById('adminNewStudentPoints').value = student.points || 0;
+
+                document.getElementById('formAddStudentTitle').textContent = '✏️ Kemaskini Data Pelajar';
+                document.getElementById('btnSubmitStudentForm').textContent = '💾 Simpan Perubahan Pelajar';
+                document.getElementById('btnCancelEditStudent').style.display = 'inline-block';
+            };
+
+            // Batal Edit Pelajar
+            document.getElementById('btnCancelEditStudent')?.addEventListener('click', () => {
+                resetStudentForm();
+            });
+
+            function resetStudentForm() {
+                document.getElementById('editingStudentId').value = '';
+                document.getElementById('formAddStudent').reset();
+                document.getElementById('formAddStudentTitle').textContent = '➕ Tambah Seorang Pelajar (Manual)';
+                document.getElementById('btnSubmitStudentForm').textContent = '➕ Daftarkan Pelajar Baharu';
+                document.getElementById('btnCancelEditStudent').style.display = 'none';
+            }
+
+            // Event Listener untuk Penapis Tingkatan & Kelas pada Skrin 2
+            document.getElementById('selectTingkatan')?.addEventListener('change', filterAndDisplayStudentsScreen2);
+            document.getElementById('selectKelas')?.addEventListener('change', filterAndDisplayStudentsScreen2);
+            document.getElementById('studentSearchInput')?.addEventListener('input', filterAndDisplayStudentsScreen2);
+
+            // Inisialisasi Senarai Pelajar
+            renderStudentsDynamic();
+
+            // Pilihan Tebus Student Change Event
+            const selectRedeemStudent = document.getElementById('selectRedeemStudent');
+            if (selectRedeemStudent) {
+                selectRedeemStudent.addEventListener('change', (e) => {
+                    const studentId = e.target.value;
+                    const students = loadStudentsFromStorage();
+                    const student = students.find(s => String(s.id) === String(studentId));
+
+                    const section = document.getElementById('redeemDashboardSection');
+                    const nameElem = document.getElementById('redeemStudentName');
+                    const classElem = document.getElementById('redeemStudentClass');
+                    const pointsElem = document.getElementById('redeemStudentPoints');
+
+                    if (student) {
+                        if (section) section.style.display = 'block';
+                        if (nameElem) nameElem.textContent = student.name;
+                        if (classElem) classElem.textContent = `${student.tingkatan || ''} ${student.kelas || ''}`;
+                        if (pointsElem) pointsElem.textContent = `${student.points || 0} PTS`;
+                        renderRewardsCatalogDynamic(student);
+                    } else {
+                        if (section) section.style.display = 'block';
+                        if (nameElem) nameElem.textContent = "Sila Pilih Pelajar";
+                        if (classElem) classElem.textContent = "Tingkatan / Kelas";
+                        if (pointsElem) pointsElem.textContent = "0 PTS";
+                        renderRewardsCatalogDynamic(null);
+                    }
+                });
+            }
+
+            // Tambah / Kemaskini Pelajar (Mod Cikgu) tanpa mendaftar semula duplicate nama
+            const formAddStudent = document.getElementById('formAddStudent');
+            if (formAddStudent) {
+                formAddStudent.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    const editingId = document.getElementById('editingStudentId').value;
+                    const name = document.getElementById('adminNewStudentName').value.trim();
+                    const tingkatan = document.getElementById('adminNewStudentTingkatan').value;
+                    const kelas = document.getElementById('adminNewStudentKelas').value;
+                    const points = parseInt(document.getElementById('adminNewStudentPoints').value) || 0;
+
+                    if (!name) return;
+
+                    let students = loadStudentsFromStorage();
+
+                    if (editingId) {
+                        // Proses Kemaskini / Edit Pelajar sedia ada
+                        const index = students.findIndex(s => String(s.id) === String(editingId));
+                        if (index !== -1) {
+                            students[index].name = name;
+                            students[index].tingkatan = tingkatan;
+                            students[index].kelas = kelas;
+                            students[index].points = points;
+                            alert('✅ Data profil pelajar berjaya dikemaskini!');
+                        }
+                    } else {
+                        // Semakan jika nama sudah wujud sebelum mendaftar baharu
+                        const existingStudentIndex = students.findIndex(s => cleanString(s.name) === cleanString(name));
+
+                        if (existingStudentIndex !== -1) {
+                            // Mengemas kini rekod jika nama serupa dijumpai
+                            students[existingStudentIndex].tingkatan = tingkatan;
+                            students[existingStudentIndex].kelas = kelas;
+                            students[existingStudentIndex].points = points;
+                            alert('ℹ️ Rekod pelajar ditemui. Profil wujud telah dikemaskini secara automatik!');
+                        } else {
+                            // Tambah Pelajar Baharu
+                            students.push({
+                                id: Date.now(),
+                                name: name,
+                                tingkatan: tingkatan,
+                                kelas: kelas,
+                                points: points
+                            });
+                            alert('✅ Pelajar baharu berjaya didaftarkan!');
+                        }
+                    }
+
+                    saveStudentsToStorage(students);
+                    resetStudentForm();
+                    renderStudentsDynamic();
+                });
+            }
+
+            // Import Google Sheets / CSV
+            const btnImportGoogleSheet = document.getElementById('btnImportGoogleSheet');
+            if (btnImportGoogleSheet) {
+                btnImportGoogleSheet.addEventListener('click', async () => {
+                    const sheetUrl = document.getElementById('googleSheetUrlInput')?.value.trim();
+                    const file = document.getElementById('csvFileInput')?.files[0];
+
+                    if (!sheetUrl && !file) {
+                        alert('Sila masukkan URL CSV Google Sheet atau pilih fail CSV terlebih dahulu!');
+                        return;
+                    }
+
+                    try {
+                        let csvContent = file ? await file.text() : await (await fetch(sheetUrl)).text();
+                        let lines = csvContent.split('\n');
+                        let students = loadStudentsFromStorage();
+                        let count = 0;
+
+                        lines.forEach((line, index) => {
+                            if (!line.trim() || (index === 0 && line.toLowerCase().includes('nama'))) return;
+                            const cols = line.split(',');
+                            if (cols.length >= 3) {
+                                const importName = cols[0].trim().replaceAll('"', '');
+                                const existingIndex = students.findIndex(s => cleanString(s.name) === cleanString(importName));
+
+                                if (existingIndex !== -1) {
+                                    // Kemaskini jika profil pelajar wujud
+                                    students[existingIndex].tingkatan = cols[1].trim().replaceAll('"', '');
+                                    students[existingIndex].kelas = cols[2].trim().replaceAll('"', '');
+                                    if (cols[3]) students[existingIndex].points = parseInt(cols[3].trim()) || 0;
+                                } else {
+                                    // Tambah baru
+                                    students.push({
+                                        id: Date.now() + Math.floor(Math.random() * 1000) + index,
+                                        name: importName,
+                                        tingkatan: cols[1].trim().replaceAll('"', ''),
+                                        kelas: cols[2].trim().replaceAll('"', ''),
+                                        points: cols[3] ? parseInt(cols[3].trim()) || 0 : 0
+                                    });
+                                }
+                                count++;
+                            }
+                        });
+
+                        saveStudentsToStorage(students);
+                        alert(`✅ Berjaya memproses ${count} orang pelajar!`);
+                        renderStudentsDynamic();
+                    } catch (err) {
+                        alert('❌ Gagal membaca CSV/Google Sheet.');
+                    }
+                });
+            }
+
+            // Simpan Data Pelajar Button
+            const btnSaveStudentsData = document.getElementById('btnSaveStudentsData');
+            if (btnSaveStudentsData) {
+                btnSaveStudentsData.addEventListener('click', () => {
+                    const students = loadStudentsFromStorage();
+                    saveStudentsToStorage(students);
+                    if (window.syncAllStudentViews) {
+                        window.syncAllStudentViews();
+                    } else {
+                        renderStudentsDynamic();
+                    }
+                    alert('✅ Data Pengurusan Pelajar berjaya disimpan secara kekal!');
+                });
+            }
+
+            // Reset Data Pelajar
+            const btnResetDatabase = document.getElementById('btnResetDatabase');
+            if (btnResetDatabase) {
+                btnResetDatabase.addEventListener('click', () => {
+                    if (confirm('⚠️ Adakah anda pasti untuk memadam semua data pelajar? Action ini tidak boleh diundur.')) {
+                        localStorage.removeItem('ecoPulseStudents');
+                        localStorage.removeItem('eco_students');
+                        if (window.syncAllStudentViews) {
+                            window.syncAllStudentViews();
+                        } else {
+                            renderStudentsDynamic();
+                        }
+                        alert('🗑️ semua data pelajar telah dipadam.');
+                    }
+                });
+            }
+
+            // Carian Nama Pelajar di Skrin 7 (Tebus)
+            const redeemStudentSearchInput = document.getElementById('redeemStudentSearchInput');
+            if (redeemStudentSearchInput) {
+                redeemStudentSearchInput.addEventListener('input', (e) => {
+                    const filter = e.target.value.toLowerCase();
+                    const select = document.getElementById('selectRedeemStudent');
+                    if (select) {
+                        Array.from(select.options).forEach(option => {
+                            if (option.value === "") return;
+                            option.style.display = option.textContent.toLowerCase().includes(filter) ? 'block' : 'none';
+                        });
+                    }
+                });
+            }
+
+            // ==========================================
+            // PENGURUSAN DATA BAR KOD (MOD GURU / ADMIN)
+            // ==========================================
+            function loadBarcodesFromStorage() {
+                const data = localStorage.getItem('eco_barcodes') || localStorage.getItem('ecoPulseBarcodes');
+                if (data !== null) {
+                    try {
+                        const parsed = JSON.parse(data);
+                        if (Array.isArray(parsed)) return parsed;
+                    } catch (e) { }
+                }
+                const defaultBarcodes = [
+                    { code: "ECO-1001", category: "Botol Plastik", points: 10, used: false },
+                    { code: "ECO-1002", category: "Tin Aluminium", points: 15, used: false },
+                    { code: "ECO-1003", category: "Kertas / Kotak", points: 5, used: false }
+                ];
+                localStorage.setItem('eco_barcodes', JSON.stringify(defaultBarcodes));
+                localStorage.setItem('ecoPulseBarcodes', JSON.stringify(defaultBarcodes));
+                return defaultBarcodes;
+            }
+
+            function saveBarcodesToStorage(barcodes) {
+                localStorage.setItem('eco_barcodes', JSON.stringify(barcodes));
+                localStorage.setItem('ecoPulseBarcodes', JSON.stringify(barcodes));
+                if (typeof window.syncGlobalBarcodes === 'function') {
+                    window.syncGlobalBarcodes(barcodes);
+                }
+                window.renderAdminBarcodeList();
+                if (typeof window.renderActiveBarcodesGuide === 'function') {
+                    window.renderActiveBarcodesGuide();
+                }
+            }
+
+            window.renderAdminBarcodeList = function () {
+                const container = document.getElementById('adminBarcodeList');
+                if (!container) return;
+                const barcodes = loadBarcodesFromStorage();
+
+                if (!barcodes || barcodes.length === 0) {
+                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center; padding: 10px;">Tiada bar kod mendaftar. Anda boleh menambah kod baharu di atas.</p>';
+                    return;
+                }
+
+                container.innerHTML = barcodes.map((b, index) => {
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(b) : (b.code || b);
+                    const catStr = typeof extractCategoryFromItem === 'function' ? extractCategoryFromItem(b) : (b.category || 'Botol Plastik');
+                    const ptsNum = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(b) : (b.points || 10);
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(b) : Boolean(b.used);
+
+                    return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1); flex-wrap: wrap; gap: 6px;">
+                        <div>
+                            <strong style="color: var(--bright-cyan); font-size: 0.95rem;">${codeStr}</strong> (${catStr})
+                            <br><small style="color: #aaa;">Mata: ${ptsNum} | Status: <span style="color: ${isUsed ? '#ef4444' : 'var(--neon-green)'}; font-weight: bold;">${isUsed ? 'Telah Guna' : 'Aktif'}</span></small>
+                        </div>
+                        <div style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            <button type="button" onclick="window.toggleBarcodeStatusDynamic(${index})" style="background: ${isUsed ? '#10b981' : '#f59e0b'}; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                ${isUsed ? '🔄 Aktifkan' : '⚡ Guna'}
+                            </button>
+                            <button type="button" onclick="window.submitBarcodeFromAdminDynamic(${index})" style="background: #3b82f6; color: #fff; border: none; padding: 4px 10px; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                🚀 Hantar
+                            </button>
+                            <button type="button" onclick="window.editBarcodeDynamic(${index})" style="background: #64748b; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer;">Edit Mata</button>
+                            <button type="button" onclick="window.deleteBarcodeDynamic(${index})" style="background: #ef4444; color: #fff; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-weight: bold;">Padam</button>
+                        </div>
+                    </div>
+                `;
+                }).join('');
+            };
+
+            window.toggleBarcodeStatusDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (barcodes[index]) {
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(barcodes[index]) : Boolean(barcodes[index].used);
+                    if (typeof barcodes[index] === 'object' && !Array.isArray(barcodes[index])) {
+                        barcodes[index].used = !isUsed;
+                    }
+                    saveBarcodesToStorage(barcodes);
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : barcodes[index].code;
+                    const newStatus = !isUsed ? 'Telah Guna' : 'Aktif (Boleh diimbas & tekan Hantar)';
+                    alert(`Status kod "${codeStr}" kini ditukar kepada: ${newStatus}`);
+                }
+            };
+
+            window.submitBarcodeFromAdminDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (barcodes[index]) {
+                    const item = barcodes[index];
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(item) : item.code;
+                    const isUsed = typeof extractUsedFromItem === 'function' ? extractUsedFromItem(item) : Boolean(item.used);
+                    if (isUsed) {
+                        if (confirm(`Kod "${codeStr}" telah digunakan. Adakah anda mahu mengaktifkannya semula dan hantar ke sistem?`)) {
+                            if (typeof item === 'object' && !Array.isArray(item)) item.used = false;
+                            saveBarcodesToStorage(barcodes);
+                        } else {
+                            return;
+                        }
+                    }
+                    if (typeof processBarcode === 'function') {
+                        processBarcode(codeStr);
+                    } else if (typeof window.processBarcode === 'function') {
+                        window.processBarcode(codeStr);
+                    }
+                }
+            };
+
+            window.editBarcodeDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (barcodes[index]) {
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : barcodes[index].code;
+                    const currentPts = typeof extractPointsFromItem === 'function' ? extractPointsFromItem(barcodes[index]) : barcodes[index].points;
+                    const newPoints = prompt(`Masukkan mata ganjaran baharu bagi ${codeStr}:`, currentPts);
+                    if (newPoints !== null && !isNaN(newPoints) && newPoints !== '') {
+                        if (typeof barcodes[index] === 'object' && !Array.isArray(barcodes[index])) {
+                            barcodes[index].points = parseInt(newPoints);
+                        }
+                        saveBarcodesToStorage(barcodes);
+                    }
+                }
+            };
+
+            window.deleteBarcodeDynamic = function (index) {
+                let barcodes = loadBarcodesFromStorage();
+                if (index >= 0 && index < barcodes.length) {
+                    const codeStr = typeof extractCodeFromItem === 'function' ? extractCodeFromItem(barcodes[index]) : (barcodes[index].code || barcodes[index]);
+                    if (confirm(`Adakah anda pasti mahu memadam bar kod "${codeStr}"?`)) {
+                        barcodes.splice(index, 1);
+                        saveBarcodesToStorage(barcodes);
+                        alert(`🗑️ Bar kod "${codeStr}" telah berjaya dipadam.`);
+                    }
+                }
+            };
+            window.deleteBarcode = window.deleteBarcodeDynamic;
+
+            function processBarcodeCSV(csvText) {
+                if (!csvText || !csvText.trim()) return 0;
+                const lines = csvText.split('\n');
+                let barcodes = loadBarcodesFromStorage();
+                let count = 0;
+
+                lines.forEach((line, index) => {
+                    const trimmed = line.trim();
+                    if (!trimmed) return;
+
+                    const cols = trimmed.split(',').map(c => c.trim().replaceAll('"', ''));
+                    if (cols.length === 0 || !cols[0]) return;
+
+                    const codeCandidate = cols[0].toUpperCase();
+                    if (index === 0 && (codeCandidate === 'KOD' || codeCandidate === 'CODE' || codeCandidate === 'BARCODE')) return;
+
+                    const code = cols[0];
+                    const category = cols[1] ? cols[1] : 'Botol Plastik';
+                    const points = cols[2] ? (parseInt(cols[2]) || 10) : 10;
+
+                    const existingIndex = barcodes.findIndex(b => b.code.toUpperCase() === code.toUpperCase());
+                    if (existingIndex !== -1) {
+                        barcodes[existingIndex].category = category;
+                        barcodes[existingIndex].points = points;
+                        barcodes[existingIndex].used = false; // Reset ke Aktif
+                    } else {
+                        barcodes.push({
+                            code: code,
+                            category: category,
+                            points: points,
+                            used: false
+                        });
+                    }
+                    count++;
+                });
+
+                saveBarcodesToStorage(barcodes);
+                return count;
+            }
+
+            // Auto-Import apabila fail CSV Bar Kod dipilih
+            const csvBarcodeFileInput = document.getElementById('csvBarcodeFileInput');
+            if (csvBarcodeFileInput) {
+                csvBarcodeFileInput.addEventListener('change', async (e) => {
+                    const file = e.target.files[0];
+                    if (!file) return;
+                    try {
+                        const content = await file.text();
+                        const count = processBarcodeCSV(content);
+                        alert(`✅ Auto-Import Berjaya! ${count} rekod data bar kod telah didaftarkan dan DIAKTIFKAN.`);
+                    } catch (err) {
+                        alert('❌ Gagal membaca fail CSV bar kod.');
+                    }
+                });
+            }
+
+            // Butang Import Barcode Sheet / URL / File
+            const btnImportBarcodeSheet = document.getElementById('btnImportBarcodeSheet');
+            if (btnImportBarcodeSheet) {
+                btnImportBarcodeSheet.addEventListener('click', async () => {
+                    const urlInput = document.getElementById('googleSheetBarcodeUrlInput')?.value.trim();
+                    const fileInput = document.getElementById('csvBarcodeFileInput')?.files[0];
+
+                    if (!urlInput && !fileInput) {
+                        alert('Sila masukkan URL CSV Google Sheet atau pilih fail CSV bar kod terlebih dahulu!');
+                        return;
+                    }
+
+                    try {
+                        let content = '';
+                        if (fileInput) {
+                            content = await fileInput.text();
+                        } else if (urlInput) {
+                            const res = await fetch(urlInput);
+                            content = await res.text();
+                        }
+
+                        const count = processBarcodeCSV(content);
+                        alert(`✅ Berjaya memproses & mendaftar ${count} data bar kod! Status: Aktif.`);
+                    } catch (err) {
+                        alert('❌ Gagal mengimport data bar kod dari Google Sheet/CSV.');
+                    }
+                });
+            }
+
+            // Tambah / Kemaskini Bar Kod Manual (Form Add Barcode)
+            const formAddBarcode = document.getElementById('formAddBarcode');
+            if (formAddBarcode) {
+                formAddBarcode.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    const code = document.getElementById('adminNewBarcodeCode')?.value.trim();
+                    const category = document.getElementById('adminNewBarcodeCategory')?.value;
+                    const points = parseInt(document.getElementById('adminNewBarcodePoints')?.value) || 10;
+
+                    if (!code) {
+                        alert('Sila masukkan kod barkod!');
+                        return;
+                    }
+
+                    let barcodes = loadBarcodesFromStorage();
+                    const existingIndex = barcodes.findIndex(b => b.code.toUpperCase() === code.toUpperCase());
+
+                    if (existingIndex !== -1) {
+                        // Semasa kemaskini kod sedia ada, tukar statusnya kembali ke Aktif (used: false)
+                        barcodes[existingIndex].category = category;
+                        barcodes[existingIndex].points = points;
+                        barcodes[existingIndex].used = false; // Reset ke Aktif
+                        saveBarcodesToStorage(barcodes);
+                        alert(`✅ Kod Barkod "${code}" sedia ada telah dikemaskini dan DIAKTIFKAN SEMULA!\nStatus: Aktif (Boleh ditekan Hantar atau diimbas).`);
+                    } else {
+                        // Tambah Kod Baharu (Status: Aktif)
+                        barcodes.push({ code: code, category: category, points: points, used: false });
+                        saveBarcodesToStorage(barcodes);
+                        alert(`✅ Bar kod baharu "${code}" berjaya ditambah!\nStatus: Aktif (Boleh ditekan Hantar atau diimbas).`);
+                    }
+
+                    formAddBarcode.reset();
+                });
+            }
+
+            // Simpan Senarai Bar Kod
+            const btnSaveBarcodesData = document.getElementById('btnSaveBarcodesData');
+            if (btnSaveBarcodesData) {
+                btnSaveBarcodesData.addEventListener('click', () => {
+                    const barcodes = loadBarcodesFromStorage();
+                    saveBarcodesToStorage(barcodes);
+                    alert('✅ Senarai Bar Kod berjaya disimpan secara kekal!');
+                });
+            }
+
+            // Reset Data Barcode Button
+            const btnResetBarcodesData = document.getElementById('btnResetBarcodesData');
+            if (btnResetBarcodesData) {
+                btnResetBarcodesData.addEventListener('click', () => {
+                    if (confirm('⚠️ Adakah anda pasti mahu menetapkan semula (reset) semua data barkod? Tindakan ini akan memadam barkod kustom dan mengembalikan status barkod laluan sistem.')) {
+                        localStorage.removeItem('eco_barcodes');
+                        localStorage.removeItem('ecoPulseBarcodes');
+                        const resetBarcodes = loadBarcodesFromStorage();
+                        if (typeof window.syncGlobalBarcodes === 'function') {
+                            window.syncGlobalBarcodes(resetBarcodes);
+                        }
+                        window.renderAdminBarcodeList();
+                        alert('🔄 Data senarai barkod berdaftar telah berjaya di-reset!');
+                    }
+                });
+            }
+
+            // Inisialisasi Senarai Barkod
+            window.renderAdminBarcodeList();
+        });
+    </script>
+</body>
+
+</html>
