@@ -59,7 +59,7 @@
 
 // Sudut Pergerakan Servo Motor Penutup Tong
 #define SERVO_LID_CLOSED 0    // Penutup Ditutup (0 Darjah)
-#define SERVO_LID_OPEN   90   // Penutup Dibuka (90 Darjah)
+#define SERVO_LID_OPEN   90   // Penutup Dibuka (160 Darjah)
 #define AUTO_CLOSE_DELAY 5000 // Auto close selepas 5 saat (5000 ms)
 
 bool isLidOpen = false;
